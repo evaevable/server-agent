@@ -11,7 +11,7 @@
 
 | 部分 | 章 | 标题 | 本章落地的能力 | 状态 |
 |---|---|---|---|---|
-| 一、地基：最小闭环 | 01 | Agent 是什么：从聊天机器人到能干活的智能体 | 项目骨架、配置、`/health`、CLI | 待发布 |
+| 一、地基：最小闭环 | 01 | Agent 是什么：从聊天机器人到能干活的智能体 | 项目骨架、配置、`/health`、CLI | [已发布](docs/chapters/01-what-is-agent.md) |
 | | 02 | 和大模型说话：LLM 调用层 | Provider 抽象、流式输出、MockLLM | 待发布 |
 | | 03 | 给 Agent 装上手：工具调用 Function Calling | 工具注册表 + 6 个只读排障工具 | 待发布 |
 | | 04 | Agent 的心跳：ReAct 循环 | Agent Loop、事件模型、`ask` 命令 | 待发布 |
@@ -106,4 +106,13 @@ server-agent/
 
 ## 快速开始
 
-第 01 章发布后补充。
+```bash
+git clone git@github.com:evaevable/server-agent.git && cd server-agent
+python3 -m venv .venv && source .venv/bin/activate   # Python 3.12+
+pip install -e ".[dev]"
+cp .env.example .env        # 可选
+pytest -q                   # 测试不需要任何 API Key
+server-agent serve          # http://127.0.0.1:8000/health
+```
+
+模块文档：[config / cli / server 骨架](docs/modules/config.md)

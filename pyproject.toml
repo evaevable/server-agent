@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "server-agent"
+version = "0.1.0"
+description = "A learn-by-building server troubleshooting agent"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+server-agent = "server_agent.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["server_agent*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
