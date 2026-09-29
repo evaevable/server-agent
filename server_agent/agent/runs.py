@@ -19,6 +19,8 @@ from typing import Any, AsyncIterator, Callable
 
 from server_agent.agent.events import AgentResult, Event
 from server_agent.agent.loop import Agent
+from server_agent.memory.recorder import Recorder
+from server_agent.memory.store import Store
 
 MAX_RUNS = 50  # 内存里最多保留多少个 run（超出后淘汰最旧的已完成 run）
 MAX_EVENTS = 2000  # 单个 run 最多保留多少事件（防止长跑任务吃光内存）
@@ -52,9 +54,10 @@ class Run:
 
 
 class RunManager:
-    def __init__(self, agent_factory: Callable[[], Agent]):
+    def __init__(self, agent_factory: Callable[[], Agent], store: Store | None = None):
         self._factory = agent_factory
         self._runs: dict[str, Run] = {}
+        self.store = store  # 传了就把 run 与事件落库（第 08 章）
 
     # ---------- 查询 ----------
     def get(self, run_id: str) -> Run | None:
@@ -70,15 +73,19 @@ class RunManager:
         run = Run(id=f"run_{uuid.uuid4().hex[:12]}", input=user_input)
         # 每个 run 一个独立的 Agent 实例：第 04 章说过实例状态（usage / last_result）不适合并发
         agent = self._factory()
-        run.task = asyncio.create_task(self._drive(run, agent, history))
+        recorder = Recorder(self.store, run.id, user_input) if self.store else None
+        run.task = asyncio.create_task(self._drive(run, agent, history, recorder))
         self._runs[run.id] = run
         self._evict()
         return run
 
-    async def _drive(self, run: Run, agent: Agent, history: list | None) -> None:
+    async def _drive(self, run: Run, agent: Agent, history: list | None,
+                     recorder: Recorder | None = None) -> None:
         try:
             async for ev in agent.run(run.input, history=history):
                 run.events.append(ev)
+                if recorder:
+                    recorder.event(ev)
                 if len(run.events) > MAX_EVENTS:
                     del run.events[: len(run.events) - MAX_EVENTS]
                 if ev.type == "end":
@@ -94,6 +101,11 @@ class RunManager:
             run.error = f"{type(e).__name__}: {e}"
         finally:
             run.finished_at = time.time()
+            if recorder and run.result:
+                recorder.finish(run.result, status=run.status, error=run.error)
+            elif recorder:
+                recorder.finish(AgentResult(text="", steps=0, tool_calls=0), status=run.status,
+                                error=run.error)
             for q in list(run.subscribers):
                 q.put_nowait(None)  # 结束哨兵：让订阅端退出等待
 

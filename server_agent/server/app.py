@@ -33,16 +33,22 @@ def default_agent_factory() -> Agent:
 
 def create_app(settings: Settings | None = None,
                agent_factory: Callable[[], Agent] | None = None,
-               tools_registry=None) -> FastAPI:
+               tools_registry=None,
+               store=None) -> FastAPI:
     settings = settings or get_settings()
     if tools_registry is None:
         from server_agent.tools import registry as tools_registry  # noqa: PLC0415
+    if store is None and settings.memory_enabled:
+        from server_agent.memory import get_store  # noqa: PLC0415
+
+        store = get_store()
     app = FastAPI(title="server-agent", version=__version__)
     app.state.settings = settings
     app.state.started_at = time.time()
     app.state.agent_factory = agent_factory or default_agent_factory
     app.state.registry = tools_registry
-    app.state.runs = RunManager(app.state.agent_factory)
+    app.state.store = store
+    app.state.runs = RunManager(app.state.agent_factory, store=store)
 
     if settings.cors_origins:
         app.add_middleware(

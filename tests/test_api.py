@@ -151,3 +151,59 @@ def test_auth_required_when_token_set(method, path):
 def test_auth_accepts_empty_when_disabled():
     with client() as c:
         assert c.get("/api/runs").status_code == 200
+
+
+REPORT_JSON = json.dumps({
+    "summary": "根分区使用率 97%", "severity": "critical",
+    "findings": [{"claim": "分区将满", "evidence": "percent=97"}],
+    "root_cause": "/var/log 未轮转", "confidence": "medium", "actions": [], "data_gaps": [],
+}, ensure_ascii=False)
+
+
+def report_factory():
+    def build():
+        from server_agent.llm.mock import text as _text
+
+        return Agent(MockLLM([tool_call("disk_usage", {}), _text(REPORT_JSON)]), make_tools(), stream=False)
+    return build
+
+
+def test_history_endpoints_persist_runs(tmp_path):
+    """服务重启（重建 app）后，历史仍能查到 —— 这就是第 08 章「记忆」的服务端体现。"""
+    from server_agent.memory import Store
+
+    store = Store(tmp_path / "api.db")
+    tools = make_tools()
+
+    def build():
+        return TestClient(create_app(Settings(), agent_factory=report_factory(),
+                                     tools_registry=tools, store=store))
+
+    with build() as c:
+        run_id = c.post("/api/runs", json={"input": "磁盘为什么满了"}).json()["id"]
+        import time as _t
+        for _ in range(50):
+            if c.get(f"/api/runs/{run_id}").json()["status"] != "running":
+                break
+            _t.sleep(0.02)
+        with c.stream("GET", f"/api/runs/{run_id}/events") as r:
+            read_sse(r)
+
+    with build() as c2:          # 新进程/新实例
+        hist = c2.get("/api/history").json()
+        assert hist["count"] == 1 and hist["runs"][0]["id"] == run_id
+        assert hist["runs"][0]["status"] == "done"
+
+        detail = c2.get(f"/api/history/{run_id}").json()
+        types = [e["type"] for e in detail["events"]]
+        assert types[0] == "start" and "tool_call" in types
+        assert detail["run"]["report"]["summary"].startswith("根分区")
+
+        assert c2.get("/api/history/run_nope").status_code == 404
+    store.close()
+
+
+def test_history_empty_when_memory_disabled():
+    with client(memory_enabled=False) as c:
+        body = c.get("/api/history").json()
+        assert body["count"] == 0 and "未启用记忆" in body["hint"]

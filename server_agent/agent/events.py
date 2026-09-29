@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-EventType = Literal["start", "step", "reasoning", "text", "tool_call", "tool_result", "report", "error", "end"]
+EventType = Literal["start", "step", "reasoning", "text", "tool_call", "tool_result", "report", "context", "error", "end"]
 
 
 @dataclass

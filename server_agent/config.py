@@ -43,6 +43,13 @@ class Settings(BaseSettings):
                                            validation_alias=AliasChoices("LLM_EXTRA_BODY", "SA_LLM_EXTRA_BODY"),
                                            description='JSON，合并进请求体的厂商私有参数，如 {"thinking":{"type":"disabled"}}')
 
+    # ---- 第 08 章：记忆与上下文 ----
+    db_path: str = Field("data/server_agent.db", description="SQLite 数据库路径")
+    context_max_tokens: int = Field(32000, ge=1000, description="模型上下文窗口（token）")
+    context_reserve_output: int = Field(2000, ge=256, description="为模型输出预留的 token")
+    context_keep_recent: int = Field(4, ge=1, description="最近 N 条工具结果不做压缩")
+    memory_enabled: bool = Field(True, description="是否把 run 与事件写入 SQLite，并在新会话注入历史记忆")
+
     # ---- 第 07 章：提示词与结构化报告 ----
     prompt_variant: str = Field("sre", description="提示词变体：sre（带排障方法论）或 plain（对照用）")
     report_repair: bool = Field(True, description="报告解析失败时，追加一次「改写为 JSON」的请求")

@@ -23,6 +23,7 @@ from typing import Any, AsyncIterator, Callable
 from server_agent.agent.events import AgentResult, Event
 from server_agent.config import get_settings
 from server_agent.llm.base import LLMClient, LLMError, Message, ToolCall, Usage
+from server_agent.memory.context import ContextBudget, fit_messages
 from server_agent.prompts import (
     DiagnosticReport,
     parse_report,
@@ -72,9 +73,13 @@ class Agent:
         self.stream = stream
         self.report_enabled = report
         self.report_repair = s.report_repair
+        self.budget = ContextBudget(max_tokens=s.context_max_tokens,
+                                    reserve_output=s.context_reserve_output,
+                                    keep_recent_tool_msgs=s.context_keep_recent)
         self.clock = clock
         self.usage = Usage()
         self.last_result: AgentResult | None = None
+        self._last_fitted: list[Message] = []
 
     def _render_prompt(self) -> str:
         return render_system_prompt(self.prompt_variant, tools=self.tools.names())
@@ -149,8 +154,15 @@ class Agent:
                 step += 1
                 await emit("step", {"step": step})
                 last = step == self.max_steps
-                step_messages = messages + ([Message.user(MAX_STEPS_NOTE.format(n=self.max_steps))]
-                                            if last else [])
+                # 关键一步：把历史压进预算（超出才动，否则原样返回）
+                fitted, ctx_stats = fit_messages(messages, self.budget)
+                self._last_fitted = fitted
+                if ctx_stats["changed"]:
+                    await emit("context", {**ctx_stats, "messages": len(messages)})
+                    async for e in flush():
+                        yield e
+                step_messages = fitted + ([Message.user(MAX_STEPS_NOTE.format(n=self.max_steps))]
+                                          if last else [])
                 assistant, finish_reason, text = await self._step(step_messages, emit)
                 async for e in flush():
                     yield e
@@ -236,7 +248,7 @@ class Agent:
             return None, error
         try:
             repaired = await self.llm.chat(
-                messages + [Message.user(repair_prompt(text))],
+                (self._last_fitted or messages) + [Message.user(repair_prompt(text))],
                 max_tokens=get_settings().agent_max_tokens,
             )
         except LLMError:

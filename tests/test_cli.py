@@ -23,7 +23,9 @@ def test_tools_list_and_schema(capsys):
         assert name in out
     assert main(["tools", "list", "--schema"]) == 0
     schemas = json.loads(capsys.readouterr().out)
-    assert len(schemas) == 6 and schemas[0]["type"] == "function"
+    names = {s["function"]["name"] for s in schemas}
+    assert len(schemas) == 8 and schemas[0]["type"] == "function"
+    assert {"disk_usage", "recall_host", "remember_fact"} <= names
 
 
 def test_tools_call_ok_and_error(capsys):
@@ -106,3 +108,69 @@ def test_report_text_renders_readable_summary(capsys):
     out = capsys.readouterr().out
     assert "[critical] 根分区 97%" in out and "根因：日志未轮转" in out
     assert "命令：du -sh /var/log/*" in out and "{...json...}" not in out
+
+
+def test_ask_injects_memory_and_quiet_mode(capsys, monkeypatch, tmp_path):
+    """有历史记录时，ask 会把「历史记忆」注入系统提示词并在 stderr 提示。"""
+    from server_agent.memory import Store, reset_store
+
+    db = tmp_path / "mem.db"
+    store = Store(db)
+    store.save_run_start("run_old", "web-01 磁盘快满了")
+    store.save_run_end("run_old", status="done", steps=2, tool_calls=1, tokens=100,
+                       report={"summary": "根分区 92%", "root_cause": "日志未轮转", "confidence": "high"})
+    store.close()
+
+    monkeypatch.setenv("SA_DB_PATH", str(db))
+    reset_store()
+    try:
+        assert main(["ask", "--mock", "--host", "web-01", "再看一眼磁盘"]) == 0
+        err = capsys.readouterr().err
+        assert "[记忆] 已注入历史记忆" in err
+
+        assert main(["ask", "--mock", "--host", "web-01", "-q", "再来一次"]) == 0
+        assert "[记忆]" not in capsys.readouterr().err
+
+        assert main(["ask", "--mock", "--host", "web-01", "--no-memory", "再来一次"]) == 0
+        assert "[记忆]" not in capsys.readouterr().err
+    finally:
+        reset_store()
+
+
+def test_history_command_lists_and_shows(capsys, monkeypatch, tmp_path):
+    from server_agent.memory import Store, reset_store
+
+    db = tmp_path / "hist.db"
+    store = Store(db)
+    store.save_run_start("run_h", "端口被谁占了")
+    store.append_event("run_h", 1, "start", {"input": "端口被谁占了"})
+    store.save_run_end("run_h", status="done", steps=1, tool_calls=1, tokens=42, text="结论",
+                       report={"summary": "80 端口被 nginx 占用", "confidence": "high"})
+    store.close()
+    monkeypatch.setenv("SA_DB_PATH", str(db))
+    reset_store()
+    try:
+        assert main(["history"]) == 0
+        out = capsys.readouterr().out
+        assert "run_h" in out and "80 端口被 nginx 占用" in out
+
+        assert main(["history", "--show", "run_h", "--events"]) == 0
+        out = capsys.readouterr().out
+        assert '"status": "done"' in out and "start:" in out
+
+        assert main(["history", "--show", "run_missing"]) == 1
+        assert "没有这条记录" in capsys.readouterr().err
+    finally:
+        reset_store()
+
+
+def test_history_empty(capsys, monkeypatch, tmp_path):
+    from server_agent.memory import reset_store
+
+    monkeypatch.setenv("SA_DB_PATH", str(tmp_path / "empty.db"))
+    reset_store()
+    try:
+        assert main(["history"]) == 0
+        assert "还没有历史记录" in capsys.readouterr().out
+    finally:
+        reset_store()

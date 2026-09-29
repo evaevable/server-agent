@@ -158,20 +158,44 @@ async def _ask(args: argparse.Namespace) -> int:
     except LLMError as e:
         print(f"[error] {e}", file=sys.stderr)
         return 2
+    run_id_holder = {"id": ""}
 
     agent = Agent(llm, system_prompt=args.system, prompt_variant=args.variant,
                   max_steps=args.max_steps, timeout=args.timeout, stream=not args.no_stream,
                   report=not args.no_report)
+
+    # 第 08 章：记忆。开跑前先把历史结论注入系统提示词，跑完把本次过程落库。
+    store = None
+    recorder = None
+    if get_settings().memory_enabled:
+        from server_agent.memory import Recorder, build_memory_context, get_store
+
+        store = get_store()
+        memory_note = build_memory_context(store, host=args.host, limit=3)
+        if memory_note and not args.no_memory:
+            agent.system_prompt = agent.system_prompt + "\n\n" + memory_note
+            if not args.quiet:
+                print(f"[记忆] 已注入历史记忆（{len(memory_note)} 字符），可用 --no-memory 关闭",
+                      file=sys.stderr)
+        recorder = Recorder(store, pending_run_id="", user_input=args.question)
     events: list[dict] = []
     rc = 0
     try:
         async for ev in agent.run(args.question):
+            if recorder:
+                if ev.type == "start":
+                    # 真实 run_id 由 Agent 生成，这里绑定给记录器，保证库里 id 与事件流一致
+                    recorder.bind(ev.run_id)
+                else:
+                    recorder.event(ev)
             if args.json:
                 events.append(ev.to_dict())
                 continue
             _render(ev, verbose=args.verbose, quiet=args.quiet)
             if ev.type == "end" and ev.data.get("stopped") in ("error", "timeout"):
                 rc = 1
+        if recorder and agent.last_result:
+            recorder.finish(agent.last_result, status="done" if rc == 0 else "error")
     except LLMError as e:
         print(f"[error] {e}", file=sys.stderr)
         return 1
@@ -269,6 +293,39 @@ def _render(ev, *, verbose: bool, quiet: bool) -> None:
               file=sys.stderr)
 
 
+def _cmd_history(args: argparse.Namespace) -> int:
+    from datetime import datetime
+
+    from server_agent.memory import get_store
+
+    store = get_store()
+    if args.show:
+        run = store.get_run(args.show)
+        if not run:
+            print(f"[error] 没有这条记录: {args.show}", file=sys.stderr)
+            return 1
+        print(json.dumps({k: v for k, v in run.items() if k != "report"}, ensure_ascii=False, indent=2))
+        if run.get("report"):
+            print(json.dumps(run["report"], ensure_ascii=False, indent=2))
+        if args.events:
+            for ev in store.get_events(args.show):
+                print(f"[{ev['seq']:>3}] {ev['type']}: {json.dumps(ev['data'], ensure_ascii=False)[:160]}")
+        return 0
+    runs = store.list_runs(limit=args.limit)
+    if not runs:
+        print("还没有历史记录。跑一次 server-agent ask 之后再来看看。")
+        return 0
+    for r in runs:
+        when = datetime.fromtimestamp(r["started_at"]).strftime("%m-%d %H:%M")
+        report = r.get("report") or {}
+        summary = report.get("summary") or (r.get("text") or "")[:60]
+        print(f"{when}  {r['id']}  [{r['status']}]  {r['input'][:40]}")
+        if summary:
+            print(f"          → {summary}（置信度 {report.get('confidence', '-')}）")
+    print(f"\n共 {len(runs)} 条。用 --show <run_id> 看详情，加 --events 看完整事件流。", file=sys.stderr)
+    return 0
+
+
 CHAT_SYSTEM = "你是一名资深 Linux 运维工程师，回答简洁、给出可执行的命令。"
 
 
@@ -310,10 +367,18 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--system", default=None, help="覆盖系统提示词（默认由 prompts/ 模板渲染）")
     ap.add_argument("--variant", default=None, help="提示词变体：sre（默认）或 plain（对照）")
     ap.add_argument("--no-report", action="store_true", help="不做结构化报告解析")
+    ap.add_argument("--host", default=None, help="关联的主机名（用于读取/写入长期记忆）")
+    ap.add_argument("--no-memory", action="store_true", help="跳过历史记忆注入")
     ap.add_argument("--json", action="store_true", help="输出完整事件流 JSON（供脚本/前端使用）")
     ap.add_argument("-q", "--quiet", action="store_true", help="只输出最终答案")
     ap.add_argument("-v", "--verbose", action="store_true", help="显示思考内容与工具结果片段")
     ap.set_defaults(func=_cmd_ask)
+
+    hp = sub.add_parser("history", help="查看历史排查记录（第 08 章，来自 SQLite）")
+    hp.add_argument("--limit", type=int, default=10, help="列出多少条")
+    hp.add_argument("--show", metavar="RUN_ID", help="查看某次运行的详情")
+    hp.add_argument("--events", action="store_true", help="配合 --show：打印完整事件流")
+    hp.set_defaults(func=_cmd_history)
     return p
 
 

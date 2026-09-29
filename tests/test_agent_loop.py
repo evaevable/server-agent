@@ -202,3 +202,49 @@ def test_events_are_json_serializable():
         if ev.type == "end":
             ev.data["usage"] = {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3}
         json.dumps(ev.to_dict(), ensure_ascii=False)
+
+
+async def test_context_compression_emits_event_and_fits_budget():
+    """工具结果把历史撑爆时，Agent 应先压缩再请求模型（并发出 context 事件）。"""
+    from server_agent.llm.base import ChatResponse, ToolCall
+
+    huge = "字" * 20000
+
+    class BigTool(ToolRegistry):
+        pass
+
+    reg = ToolRegistry()
+
+    @reg.tool(name="big_tool", max_chars=100000)
+    def _big(i: int = 0) -> str:
+        """返回很大的结果。"""
+        return f"{i}:" + huge
+
+    script = []
+    for i in range(3):
+        # 参数必须不同：完全相同的调用会被第 04 章的重复检测拦下
+        script.append(ChatResponse(Message.assistant(None, [ToolCall(f"c{i}", "big_tool", f'{{"i": {i}}}')]),
+                                   finish_reason="tool_calls"))
+    script.append("查完了")
+
+    agent = Agent(MockLLM(script), reg, stream=False, timeout=99,
+                  clock=fake_clock())
+    agent.budget = __import__("server_agent.memory.context", fromlist=["ContextBudget"]).ContextBudget(
+        max_tokens=12000, reserve_output=1000, keep_recent_tool_msgs=1)
+    events = await collect(agent, "用大工具查三遍")
+
+    ctx_events = [e for e in events if e.type == "context"]
+    assert ctx_events, "超预算时应发出 context 事件"
+    # 单条工具结果本身就超预算时，会走到「连最近几条也压」的兜底（stage 带 +protected 后缀）
+    assert ctx_events[0].data["stage"].startswith(("tail_head", "summarize", "drop"))
+    assert ctx_events[0].data["after_tokens"] <= ctx_events[0].data["before_tokens"]
+    # 第二次请求给模型的历史必须已经被压过
+    second_call_tokens = __import__("server_agent.memory.context", fromlist=["messages_tokens"]).messages_tokens(
+        llm_messages(agent))
+    assert second_call_tokens <= agent.budget.available
+    assert events[-1].data["stopped"] == "final"
+
+
+def llm_messages(agent):
+    """取最近一次请求给模型的消息（MockLLM 记录了 calls）。"""
+    return agent.llm.calls[-1]["messages"]

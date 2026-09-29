@@ -108,6 +108,26 @@ async def run_events(run_id: str, request: Request,
     })
 
 
+@router.get("/history", dependencies=[Depends(require_token)])
+def history(request: Request, limit: int = 20) -> dict:
+    """历史排查记录（来自 SQLite，服务重启后仍在）。"""
+    store = request.app.state.store
+    if store is None:
+        return {"count": 0, "runs": [], "hint": "未启用记忆（SA_MEMORY_ENABLED=false）"}
+    runs = store.list_runs(limit=max(1, min(limit, 100)))
+    return {"count": len(runs), "runs": runs}
+
+
+@router.get("/history/{run_id}", dependencies=[Depends(require_token)])
+def history_detail(run_id: str, request: Request, after_seq: int = 0) -> dict:
+    """某次历史运行的详情与完整事件流（即使在内存里已被淘汰）。"""
+    store = request.app.state.store
+    run = store.get_run(run_id) if store else None
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"历史里没有这个 run: {run_id}")
+    return {"run": run, "events": store.get_events(run_id, after_seq=after_seq)}
+
+
 @router.get("/tools", dependencies=[Depends(require_token)])
 def list_tools(request: Request) -> dict:
     """暴露**当前 app 实例**实际可用的工具清单（便于前端展示「它能做什么」）。"""
