@@ -65,7 +65,7 @@ flowchart TB
 | 模块文档 | `docs/modules/<module>.md` | 模块职责、接口、数据流图、设计取舍、已知限制 |
 | 架构决策 | `docs/adr/NNNN-*.md` | 仅在有重大取舍时写（如「为什么不用 LangGraph」） |
 | 验收 | 章节末尾「验收清单」 | 一组可复制执行的命令 + 预期输出；`pytest` 全绿 |
-| 版本点 | git tag `chNN` | 可随时 `git checkout chNN` 回看该章状态 |
+| 版本点 | git tag `chNN` | 可随时 `git checkout chNN` 回看该章状态（第 10–17 章一次性发布，`ch10`…`ch17` 指向同一提交） |
 
 原则：**测试默认不花 token**。所有 Agent 行为测试都用 MockLLM（按脚本回放的假模型）跑；接真模型只在「动手练习」里做。
 
@@ -190,7 +190,7 @@ flowchart TB
   - 结构化输出：让最终报告满足 JSON Schema（现象、证据、根因、置信度、建议操作）
   - 提示词版本化与 A/B 对比（为第 15 章评估埋伏笔）
 - **代码落地**
-  - `server_agent/prompts/`：`system.md`（Jinja2 模板，注入主机信息与可用工具）、`report_schema.py`
+  - `server_agent/prompts/`：`system_<variant>.md`（`string.Template` 模板，`$var` 占位注入主机信息与可用工具；不用 Jinja2 / `str.format`，因为报告 Schema 里全是花括号）、`report.py`（诊断报告 Schema）
   - Agent 结束时输出结构化诊断报告；前端渲染为报告卡片
 - **模块文档**：`docs/modules/prompts.md`
 - **验收**：同一问题，对比「无方法论提示词」与「SRE 提示词」两次运行的工具调用顺序与结论质量
@@ -228,7 +228,7 @@ flowchart TB
   - 受限命令工具 `run_command`：命令白名单 + 参数校验
   - WebSocket 审批消息；前端审批弹窗（批准/拒绝/查看 dry-run 结果）
   - 测试：注入攻击用例（日志里写恶意指令，验证不会被执行）
-  - 本章的 dry-run 只是「打印将要做什么」，第 11 章会升级为在沙箱里真跑一遍的「预演」
+  - 本章的 dry-run 只是「打印将要做什么」；在沙箱里真跑一遍的「预演」第 11 章评估后推迟（见 ADR-0003）
 - **模块文档**：`docs/modules/policy.md`、`docs/adr/0002-no-arbitrary-shell.md`
 - **验收**：让 Agent 重启一个服务，必须在前端点「批准」后才执行；审计日志可查
 
@@ -264,8 +264,8 @@ flowchart TB
   - `server_agent/sandbox/docker_local.py`：本地 Docker 后端（`--network none`、只读根文件系统、内存 / CPU / 进程数限制），无 AGS Key 时默认使用
   - `server_agent/sandbox/ags.py`：AGS 后端（E2B 兼容 SDK，通过 `E2B_DOMAIN` / `E2B_API_KEY` 配置）
   - 工具 `run_python`：把从主机采集到的日志片段、指标作为文件放进沙箱，执行 Agent 生成的分析代码，只回传结果
-  - 沙箱预演：第 09 章审批流增加「预演」步骤——在与目标主机同镜像的沙箱里先执行一遍高危操作，预演结果附在审批卡片上（适用于有镜像的环境，如靶场、容器化服务）
-  - 可选：`lab/ags/` 说明如何用自定义沙箱在 AGS 上承载靶机
+  - 沙箱预演：第 09 章审批流增加「预演」步骤——在与目标主机同镜像的沙箱里先执行一遍高危操作，预演结果附在审批卡片上（适用于有镜像的环境，如靶场、容器化服务）。**状态：推迟**，审批卡片仍展示第 09 章的 dry-run，理由见 ADR-0003
+  - 可选：`lab/ags/` 说明如何用自定义沙箱在 AGS 上承载靶机。**状态：推迟**（无 AGS Key，不交付未验证的配置）
   - 测试：FakeSandbox 单测；Docker 后端集成测试标记 `docker`；逃逸用例（读宿主文件、访问网络）验证被拦
 - **模块文档**：`docs/modules/sandbox.md`、`docs/adr/0003-sandbox-boundary.md`（任意代码只允许在沙箱内执行；沙箱不作为操作生产机的通道）
 - **验收**：让 Agent「统计 web-01 nginx 访问日志中 5xx 按分钟的分布」，它先拉取日志，再在沙箱里写代码算出结果；沙箱内尝试联网被拦截；配置 AGS Key 后同一任务改在云端沙箱运行，控制台可见实例创建与销毁

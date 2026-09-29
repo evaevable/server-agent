@@ -2,7 +2,8 @@
 
 - 引入章节：第 11 章
 - 源码：`server_agent/sandbox/`、`server_agent/tools/sandbox_tool.py`
-- 测试：`tests/test_sandbox.py`（11 个 + 1 个 Docker 真实执行，daemon 不可用时跳过）
+- 测试：`tests/test_sandbox.py`（13 个 + 1 个 Docker 真实执行，daemon 不可用时跳过）
+- 边界决策：[ADR-0003](../adr/0003-sandbox-boundary.md)（任意代码只在沙箱里跑；沙箱不是操作生产机的通道）
 
 ## 职责
 
@@ -64,3 +65,4 @@ flowchart LR
 - Docker 后端首次执行需拉镜像（秒级到分钟级），无法做到 AGS 的毫秒启动。
 - 沙箱内不预装第三方库（如 pandas），需要自定义镜像。
 - 生成文件的回传只保留了接口位（`artifacts`），当前仅支持 stdout。
+- SYLLABUS 里的「沙箱预演」与 `lab/ags/` 暂未落地，推迟原因见 ADR-0003。

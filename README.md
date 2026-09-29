@@ -4,6 +4,7 @@
 
 - **Agent 做什么**：接收自然语言指令（如「web-01 的磁盘为什么满了」「nginx 502 了帮我看看」），自己决定调用哪些工具、在哪台主机上执行，给出诊断报告；在**授权范围内**执行修复操作（重启服务、清理文件等），高危操作必须经人工审批。
 - **课程怎么学**：共 17 章 + 3 个附录。每章 = **知识讲解**（`docs/chapters/`）+ **代码落地**（本仓库源码）+ **模块文档**（`docs/modules/`）。每章结束打一个 git tag（`ch01` ... `ch17`），随时可以 `git checkout ch05` 回到当时的代码状态。
+  注意：第 10–17 章是一次性发布的，`ch10` ... `ch17`（以及合并 tag `ch10-ch17`）**指向同一个提交**，checkout 其中任何一个看到的都是第 17 章完成时的代码；逐章回看请以讲义为准。
 
 > 完整的逐章学习内容、代码交付物与验收标准见 **[docs/SYLLABUS.md](docs/SYLLABUS.md)**。
 
@@ -67,15 +68,16 @@ flowchart LR
 
 详细取舍见 [docs/adr/0001-tech-stack.md](docs/adr/0001-tech-stack.md)。
 
-## 仓库结构（规划，随章节逐步长出来）
+## 仓库结构
 
 ```text
 server-agent/
 ├── README.md
 ├── pyproject.toml                 # 第 01 章
 ├── docs/
-│   ├── SYLLABUS.md                # 课程大纲（本次发布）
-│   ├── adr/                       # 架构决策记录
+│   ├── SYLLABUS.md                # 课程大纲（每章知识点、代码、验收的权威来源）
+│   ├── HANDOFF.md                 # 新会话交接提示词
+│   ├── adr/                       # 架构决策记录（0001 选型 / 0002 不给任意 shell / 0003 沙箱边界）
 │   ├── chapters/NN-<slug>.md      # 每章知识讲解
 │   └── modules/<module>.md        # 每个功能模块的说明文档
 ├── server_agent/
@@ -95,9 +97,9 @@ server-agent/
 │   ├── tracing/                   # 15  Trace
 │   └── multi/                     # 16  多 Agent
 ├── web/                           # 06  前端
-├── runbooks/                      # 12  排障手册
+├── runbooks/                      # 12  排障手册（格式见 runbooks/README.md）
 ├── lab/                           # 10  Docker 靶场 + 故障注入脚本
-├── evals/                         # 15  评测集与评测器
+├── evals/                         # 15  评测集与评测器（用例格式见 evals/README.md）
 └── tests/
 ```
 
@@ -111,7 +113,7 @@ cp .env.example .env        # 可选
 pytest -q                   # 测试不需要任何 API Key
 server-agent serve          # http://127.0.0.1:8000/health
 server-agent chat --mock    # 无需 API Key 体验对话；填好 .env 里的 LLM_* 后去掉 --mock
-server-agent tools list     # 查看 6 个只读排障工具
+server-agent tools list     # 查看全部 20 个工具（14 只读 / 2 低风险 / 4 高危需审批）
 server-agent tools call disk_usage '{"path": "/"}'
 server-agent ask "这台机器为什么卡"   # 让 Agent 自己多步排查（需先配置 .env）
 server-agent ask --variant plain "这台机器为什么卡"   # 对照组：不带方法论的提示词
@@ -127,4 +129,6 @@ make lab-up && make fault-disk                # 起靶场并注入故障（需�
 SA_API_TOKEN=devtoken server-agent serve   # 启动服务：控制台 http://127.0.0.1:8000 ，接口见 docs/api.md
 ```
 
-模块文档：[config / cli / server 骨架](docs/modules/config.md) · [llm 调用层](docs/modules/llm.md) · [tools 工具层](docs/modules/tools.md) · [agent 循环](docs/modules/agent-loop.md) · [server 服务层](docs/modules/server.md) · [web 前端](docs/modules/web.md) · [prompts 提示词层](docs/modules/prompts.md) · [memory 记忆层](docs/modules/memory.md) · [executors 执行器](docs/modules/executors.md) · [sandbox 沙箱](docs/modules/sandbox.md) · [planner 规划](docs/modules/planner.md) · [knowledge 知识库](docs/modules/knowledge.md) · [mcp](docs/modules/mcp.md) · [tracing/evals](docs/modules/tracing.md) · [multi 多 Agent](docs/modules/multi-agent.md) · [policy 策略层](docs/modules/policy.md) · [HTTP/WS 接口](docs/api.md)
+模块文档：[config / cli / server 骨架](docs/modules/config.md) · [llm 调用层](docs/modules/llm.md) · [tools 工具层](docs/modules/tools.md) · [agent 循环](docs/modules/agent-loop.md) · [server 服务层](docs/modules/server.md) · [web 前端](docs/modules/web.md) · [prompts 提示词层](docs/modules/prompts.md) · [memory 记忆层](docs/modules/memory.md) · [executors 执行器](docs/modules/executors.md) · [sandbox 沙箱](docs/modules/sandbox.md) · [planner 规划](docs/modules/planner.md) · [knowledge 知识库](docs/modules/knowledge.md) · [mcp](docs/modules/mcp.md) · [tracing/evals](docs/modules/tracing.md) · [multi 多 Agent](docs/modules/multi-agent.md) · [policy 策略层](docs/modules/policy.md) · [HTTP/WS 接口](docs/api.md) · [runbooks 手册格式](runbooks/README.md) · [evals 用例格式](evals/README.md)
+
+架构决策：[ADR-0001 技术选型](docs/adr/0001-tech-stack.md) · [ADR-0002 不给 Agent 任意 shell](docs/adr/0002-no-arbitrary-shell.md) · [ADR-0003 沙箱边界](docs/adr/0003-sandbox-boundary.md)

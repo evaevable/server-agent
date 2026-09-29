@@ -13,7 +13,7 @@
 - 本地仓库：/Users/lanceche/WorkBuddy/2026-09-29-10-41-08/server-agent
 - 远程：git@github.com:evaevable/server-agent.git（push 必须用 SSH；https 形式的 git 协议在本机被拦）
 - 进度：17 章 + 3 附录全部已发布（tag ch01…ch09、ch10-ch17），README 课程表全绿
-- 测试基线：.venv/bin/pytest -q --basetemp=/tmp/sa-pytest → 292 passed, 1 skipped（Docker 不可用时跳过）
+- 测试基线：.venv/bin/pytest -q --basetemp=/tmp/sa-pytest → 294 passed, 1 skipped（Docker 不可用时跳过）
 - 评测基线：.venv/bin/server-agent eval --cases evals/cases → 通过率 100%
 
 【请先做这三件事，再回答我】
@@ -22,7 +22,7 @@
 3. 跑 .venv/bin/pytest -q --basetemp=/tmp/sa-pytest 确认基线是绿的
 
 【已知能力（不用重新实现）】
-ReAct 循环与事件流；18 个工具（含远程/沙箱/记忆/知识/Runbook）；FastAPI + SSE + WebSocket + 前端控制台；
+ReAct 循环与事件流；20 个工具（含远程/沙箱/记忆/知识/Runbook）；FastAPI + SSE + WebSocket + 前端控制台；
 策略层（风险分级 / 人工审批 / 审计 / 脱敏）；SQLite 记忆与主机档案；SSH 多主机执行器 + 主机清单；
 Docker 与腾讯云 AGS 沙箱（run_python）；Plan-and-Execute 与 Runbook；BM25 知识库检索（带引用溯源）；
 MCP Server/Client；Trace（耗时树）+ 离线评测集；多 Agent（诊断/执行/审查）；Docker Compose 一键交付。
@@ -91,7 +91,7 @@ MCP Server/Client；Trace（耗时树）+ 离线评测集；多 Agent（诊断/�
 
 ```text
 继续 server-agent 项目：本地 /Users/lanceche/WorkBuddy/2026-09-29-10-41-08/server-agent，
-先加载 skill server-agent-course-tutor 并跑 make test 确认基线（期望 292 passed, 1 skipped），
+先加载 skill server-agent-course-tutor 并跑 make test 确认基线（期望 294 passed, 1 skipped），
 然后我要：<一句话需求>
 ```
 

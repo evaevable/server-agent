@@ -108,6 +108,32 @@ async def test_run_python_timeout_and_nonzero_exit(monkeypatch):
     assert r.ok and r.data["ok"] is False and "NameError" in r.data["stderr"]   # 执行完成但代码报错
 
 
+async def test_explicit_ags_backend_does_not_silently_fall_back(monkeypatch):
+    """ADR-0003 第 4 条：显式 SA_SANDBOX_BACKEND=ags 时配置不全要报错，不能悄悄换成本地 Docker。"""
+    monkeypatch.delenv("E2B_DOMAIN", raising=False)
+    monkeypatch.delenv("E2B_API_KEY", raising=False)
+    monkeypatch.setenv("SA_SANDBOX_BACKEND", "ags")
+    r = await registry.call("run_python", {"code": "print(1)"})
+    assert not r.ok and "沙箱不可用" in r.error and "E2B_DOMAIN" in r.error
+
+
+async def test_run_python_never_falls_back_to_host_execution(monkeypatch):
+    """ADR-0003 第 1 条：Docker 不可用时直接报错，绝不退化为在宿主机上执行模型代码。"""
+    import subprocess
+
+    def boom(*a, **k):
+        raise FileNotFoundError("docker")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    monkeypatch.setattr(subprocess, "Popen", boom)
+    monkeypatch.setattr("asyncio.create_subprocess_exec", boom)
+    monkeypatch.setenv("SA_SANDBOX_BACKEND", "local_docker")
+    marker = "__host_exec_marker__"
+    r = await registry.call("run_python", {"code": f"print('{marker}')"})
+    assert not r.ok and "沙箱不可用" in r.error
+    assert marker not in (r.content or "")
+
+
 async def test_run_python_rejects_oversized_input_and_disabled_sandbox(monkeypatch):
     fake = FakeSandbox()
     monkeypatch.setattr("server_agent.tools.sandbox_tool._make_sandbox", lambda: fake)

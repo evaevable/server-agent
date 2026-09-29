@@ -106,6 +106,7 @@ def test_repo_runbooks_load():
     reset_library(None)          # 清掉缓存，避免受其它测试影响
     lib = get_library()
     assert set(lib.names()) >= {"disk-full", "cpu-high", "service-502", "port-conflict"}
+    assert "README" not in lib.names()      # runbooks/README.md 没有 frontmatter，不能被当成手册
     hits = lib.search("nginx 起不来，端口被占用")
     assert hits and hits[0].name in ("service-502", "port-conflict")
 

@@ -20,7 +20,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+# httpx2：Starlette 1.7 起 TestClient 优先用 httpx2（仍用 httpx 会报 DeprecationWarning）。
+# 只用于测试客户端；业务代码的 LLM / AGS 调用仍直接用 httpx（ADR-0001）。
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx2>=2.0"]
 
 [project.scripts]
 server-agent = "server_agent.cli:main"

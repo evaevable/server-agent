@@ -16,6 +16,8 @@ htmlcov/
 *.sqlite3
 data/
 traces/
+# make eval 生成的报告（每次跑都会变，不入库）
+eval-report.md
 audit/
 
 .DS_Store
