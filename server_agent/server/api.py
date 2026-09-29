@@ -108,6 +108,40 @@ async def run_events(run_id: str, request: Request,
     })
 
 
+class ApprovalDecision(BaseModel):
+    approved: bool
+    note: str | None = None
+
+
+@router.get("/runs/{run_id}/approvals", dependencies=[Depends(require_token)])
+def list_approvals(run_id: str, request: Request) -> dict:
+    """该 run 的待决审批（前端启动时补拉一次，避免错过事件）。"""
+    items = request.app.state.approvals.pending(run_id)
+    return {"count": len(items), "approvals": [a.public() for a in items]}
+
+
+@router.post("/runs/{run_id}/approvals/{approval_id}", dependencies=[Depends(require_token)])
+def decide_approval(run_id: str, approval_id: str, body: ApprovalDecision, request: Request) -> dict:
+    """批准或拒绝一次高危操作。**没有人批准 = 拒绝**（超时也会按拒绝处理）。"""
+    approval = request.app.state.approvals.get(approval_id)
+    if approval is None or approval.run_id != run_id:
+        raise HTTPException(status_code=404, detail=f"没有这次审批: {approval_id}")
+    if approval.status != "pending":
+        raise HTTPException(status_code=409, detail=f"该审批已成 {approval.status}，不能重复裁决")
+    done = request.app.state.approvals.resolve(approval_id, body.approved, decider="api", note=body.note)
+    return {"approval": done.public()}
+
+
+@router.get("/audit", dependencies=[Depends(require_token)])
+def audit_log(request: Request, limit: int = 50, from_file: bool = False) -> dict:
+    """审计日志：工具调用、审批、拒绝的记录（参数已脱敏）。"""
+    audit = request.app.state.audit
+    if audit is None:
+        return {"count": 0, "records": [], "hint": "未启用审计（SA_AUDIT_ENABLED=false）"}
+    records = audit.read_file(limit=limit) if from_file else audit.records(limit=limit)
+    return {"count": len(records), "records": records}
+
+
 @router.get("/history", dependencies=[Depends(require_token)])
 def history(request: Request, limit: int = 20) -> dict:
     """历史排查记录（来自 SQLite，服务重启后仍在）。"""

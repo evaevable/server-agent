@@ -9,6 +9,7 @@ EXPECTED = {"host_info", "cpu_memory_usage", "disk_usage", "top_processes", "lis
 
 
 MEMORY_TOOLS = {"recall_host", "remember_fact"}
+HIGH_RISK_TOOLS = {"restart_service", "kill_process", "clean_directory"}
 
 
 def test_all_six_tools_registered_readonly_and_schemas_valid():
@@ -16,6 +17,9 @@ def test_all_six_tools_registered_readonly_and_schemas_valid():
     for t in registry.list():
         if t.name in MEMORY_TOOLS:
             assert t.risk in ("read", "low")   # 记忆工具只写本地库，不属于系统写操作
+            continue
+        if t.name in HIGH_RISK_TOOLS:
+            assert t.risk == "high"            # 第 09 章：写操作必须走审批
             continue
         assert t.risk == "read"
         fn = t.schema()["function"]

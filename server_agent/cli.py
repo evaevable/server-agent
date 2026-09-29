@@ -128,11 +128,42 @@ def _cmd_tools_list(args: argparse.Namespace) -> int:
 
 
 def _cmd_tools_call(args: argparse.Namespace) -> int:
+    """手动调用工具。
+
+    注意：这里**必须**和 Agent 走同一条策略通道。第 09 章开发时踩过一个真实漏洞：
+    `tools call run_command '{"command":"rm -rf /"}'` 直接执行了危险命令，
+    因为策略只挂在 Agent 循环上，这个入口绕过了它。
+    结论：安全校验要挂在**所有**能触发副作用的入口上，而不是「主要入口」上。
+    """
     import asyncio
 
+    from server_agent.policy import Policy, get_audit
     from server_agent.tools import registry
 
-    r = asyncio.run(registry.call(args.name, args.args))
+    settings = get_settings()
+    audit = get_audit() if settings.audit_enabled else None
+    policy = Policy(allowed_paths=tuple(settings.policy_allow_paths),
+                    allowed_services=tuple(settings.policy_allow_services),
+                    require_approval=settings.policy_require_approval)
+
+    if args.no_approval:
+        async def approver(tool, call_args, dry_run=None, reason=""):
+            print(f"[审批] {tool} 需要批准，但指定了 --no-approval，按拒绝处理", file=sys.stderr)
+            return False
+    else:
+        async def approver(tool, call_args, dry_run=None, reason=""):
+            print(f"\n[审批] 请求执行 {tool}", file=sys.stderr)
+            print(f"  参数：{json.dumps(call_args, ensure_ascii=False)}", file=sys.stderr)
+            if dry_run is not None:
+                print(f"  预演：{json.dumps(dry_run, ensure_ascii=False)[:600]}", file=sys.stderr)
+            try:
+                answer = input("  批准执行？[y/N] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                return False
+            return answer in ("y", "yes")
+
+    r = asyncio.run(registry.call(args.name, args.args, policy=policy, approver=approver,
+                                 audit=audit, run_id="cli_tools_call"))
     try:
         print(json.dumps(json.loads(r.content), ensure_ascii=False, indent=2))
     except json.JSONDecodeError:
@@ -160,9 +191,39 @@ async def _ask(args: argparse.Namespace) -> int:
         return 2
     run_id_holder = {"id": ""}
 
+    # 第 09 章：策略与审批。CLI 的审批人就是终端前的你（逐条确认）。
+    from server_agent.policy import Policy, get_audit
+
+    audit = get_audit() if get_settings().audit_enabled else None
+    policy = Policy(allowed_paths=tuple(get_settings().policy_allow_paths),
+                    allowed_services=tuple(get_settings().policy_allow_services),
+                    require_approval=get_settings().policy_require_approval)
+    approver = None
+    if args.yes:
+        async def approver(tool, call_args, dry_run=None, reason=""):
+            print(f"\n[审批] {tool} {call_args} —— --yes 已自动批准", file=sys.stderr)
+            return True
+    elif not args.no_approval:
+        async def approver(tool, call_args, dry_run=None, reason=""):
+            print(f"\n[审批] 请求执行 {tool}", file=sys.stderr)
+            print(f"  参数：{json.dumps(call_args, ensure_ascii=False)}", file=sys.stderr)
+            if dry_run is not None:
+                print(f"  预演：{json.dumps(dry_run, ensure_ascii=False)[:600]}", file=sys.stderr)
+            print(f"  原因：{reason}", file=sys.stderr)
+            try:
+                answer = input("  批准执行？[y/N] ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  （无法读取输入，按拒绝处理）", file=sys.stderr)
+                return False
+            return answer in ("y", "yes")
+    else:
+        async def approver(tool, call_args, dry_run=None, reason=""):
+            print(f"\n[审批] {tool} 需要人工批准，但已指定 --no-approval，按拒绝处理", file=sys.stderr)
+            return False
+
     agent = Agent(llm, system_prompt=args.system, prompt_variant=args.variant,
                   max_steps=args.max_steps, timeout=args.timeout, stream=not args.no_stream,
-                  report=not args.no_report)
+                  report=not args.no_report, approver=approver, policy=policy, audit=audit)
 
     # 第 08 章：记忆。开跑前先把历史结论注入系统提示词，跑完把本次过程落库。
     store = None
@@ -326,6 +387,34 @@ def _cmd_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_audit(args: argparse.Namespace) -> int:
+    from datetime import datetime
+
+    from server_agent.policy import get_audit
+
+    audit = get_audit()
+    # 每次命令行调用都是新进程，内存缓冲必然是空的，所以默认从磁盘读
+    records = audit.records(limit=args.limit) if args.memory else audit.read_file(limit=args.limit)
+    if not records:
+        print("还没有审计记录。（审计日志在 " + str(audit.path or "内存") + "）")
+        return 0
+    for r in records:
+        when = datetime.fromtimestamp(r["ts"]).strftime("%m-%d %H:%M:%S")
+        extra = []
+        if r.get("decision"):
+            extra.append(r["decision"])
+        if r.get("approved") is not None:
+            extra.append("approved" if r["approved"] else "denied")
+        if r.get("ok") is not None:
+            extra.append("ok" if r["ok"] else "failed")
+        tail = f" | {' '.join(extra)}" if extra else ""
+        print(f"{when}  {r['event']:<11} {r.get('tool', ''):<16}{tail}")
+        if args.verbose and r.get("detail"):
+            print(f"    {r['detail'][:160]}")
+    print(f"\n共 {len(records)} 条。加 --verbose 看 detail，--file 从磁盘重新读。", file=sys.stderr)
+    return 0
+
+
 CHAT_SYSTEM = "你是一名资深 Linux 运维工程师，回答简洁、给出可执行的命令。"
 
 
@@ -356,6 +445,7 @@ def build_parser() -> argparse.ArgumentParser:
     tc = tsub.add_parser("call", help="手动调用一个工具")
     tc.add_argument("name", help="工具名")
     tc.add_argument("args", nargs="?", default="{}", help='JSON 参数，如 \'{"path": "/"}\'')
+    tc.add_argument("--no-approval", action="store_true", help="需要审批的操作直接拒绝（非交互场景用）")
     tc.set_defaults(func=_cmd_tools_call)
 
     ap = sub.add_parser("ask", help="让 Agent 自主排查一个问题（第 04 章）")
@@ -369,6 +459,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-report", action="store_true", help="不做结构化报告解析")
     ap.add_argument("--host", default=None, help="关联的主机名（用于读取/写入长期记忆）")
     ap.add_argument("--no-memory", action="store_true", help="跳过历史记忆注入")
+    ap.add_argument("--yes", action="store_true", help="高危操作自动批准（仅用于演示/测试）")
+    ap.add_argument("--no-approval", action="store_true", help="所有需要审批的操作直接拒绝（默认行为是交互式询问）")
     ap.add_argument("--json", action="store_true", help="输出完整事件流 JSON（供脚本/前端使用）")
     ap.add_argument("-q", "--quiet", action="store_true", help="只输出最终答案")
     ap.add_argument("-v", "--verbose", action="store_true", help="显示思考内容与工具结果片段")
@@ -379,6 +471,12 @@ def build_parser() -> argparse.ArgumentParser:
     hp.add_argument("--show", metavar="RUN_ID", help="查看某次运行的详情")
     hp.add_argument("--events", action="store_true", help="配合 --show：打印完整事件流")
     hp.set_defaults(func=_cmd_history)
+
+    au = sub.add_parser("audit", help="查看审计日志（第 09 章：谁在什么时候调了什么）")
+    au.add_argument("--limit", type=int, default=30, help="显示多少条")
+    au.add_argument("--memory", action="store_true", help="只看内存缓冲（默认从磁盘 JSONL 读取）")
+    au.add_argument("-v", "--verbose", action="store_true", help="显示 detail 字段")
+    au.set_defaults(func=_cmd_audit)
     return p
 
 

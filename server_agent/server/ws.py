@@ -8,6 +8,7 @@
 协议（客户端 -> 服务端 JSON）：
     {"type": "ask",       "input": "磁盘为什么满了"}
     {"type": "cancel",    "run_id": "run_xxx"}
+    {"type": "approval",  "approval_id": "ap_xxx", "approved": true}
     {"type": "ping"}
 服务端 -> 客户端：与 SSE 相同的事件对象，外加 {"type": "ready"} 与 {"type": "pong"}。
 """
@@ -77,6 +78,15 @@ async def ws_endpoint(ws: WebSocket, token: str | None = None) -> None:
                 run = await session.mgr.start(user_input)
                 await session.send({"type": "accepted", "run_id": run.id})
                 session.tasks[run.id] = asyncio.create_task(session.forward(run.id))
+            elif kind == "approval":
+                approval_id = msg.get("approval_id") or ""
+                approval = ws.app.state.approvals.get(approval_id)
+                if approval is None:
+                    await session.send({"type": "error", "message": f"没有这次审批: {approval_id}"})
+                    continue
+                done = ws.app.state.approvals.resolve(approval_id, bool(msg.get("approved")),
+                                                     decider="ws", note=msg.get("note"))
+                await session.send({"type": "approval_resolved", "approval": done.public()})
             elif kind == "cancel":
                 run_id = msg.get("run_id") or ""
                 ok = await session.mgr.cancel(run_id)

@@ -162,6 +162,46 @@ function reportCard(data) {
   scrollToBottom();
 }
 
+function approvalCard(data) {
+  const ap = data.approval;
+  const wrap = el("div", "bubble");
+  const body = el("div", "body");
+  body.style.borderColor = "var(--warn)";
+  body.append(el("div", "stats", "需要人工审批 · " + ap.tool + " · 风险 " + ap.risk));
+  body.append(el("div", null, "参数：" + JSON.stringify(ap.args, null, 0)));
+  if (ap.reason) body.append(el("div", "stats", "原因：" + ap.reason));
+  if (ap.dry_run) {
+    const pre = el("pre", "payload", JSON.stringify(ap.dry_run, null, 2));
+    body.append(el("div", "stats", "预演结果（将要做的事）"));
+    body.append(pre);
+  }
+  const actions = el("div", "composer-actions");
+  const approve = el("button", null, "批准执行");
+  const deny = el("button", "danger", "拒绝");
+  approve.onclick = () => decideApproval(ap, true, approve, deny);
+  deny.onclick = () => decideApproval(ap, false, approve, deny);
+  actions.append(deny, approve);
+  body.append(actions);
+  wrap.append(body);
+  $("timeline").append(wrap);
+  scrollToBottom();
+}
+
+async function decideApproval(ap, approved, approveBtn, denyBtn) {
+  approveBtn.disabled = true;
+  denyBtn.disabled = true;
+  try {
+    await api("/api/runs/" + ap.run_id + "/approvals/" + ap.id, {
+      method: "POST", body: JSON.stringify({ approved: approved, note: "来自控制台" }),
+    });
+    approveBtn.textContent = approved ? "已批准" : "已拒绝";
+  } catch (e) {
+    addError(e.message);
+    approveBtn.disabled = false;
+    denyBtn.disabled = false;
+  }
+}
+
 function addError(message) {
   const wrap = el("div", "bubble");
   const body = el("div", "body");
@@ -195,6 +235,8 @@ function handleEvent(ev) {
     toolCard(d.id, d.name, d.arguments);
   } else if (ev.type === "tool_result") {
     finishToolCard(d.id, d);
+  } else if (ev.type === "approval") {
+    approvalCard(d);
   } else if (ev.type === "report") {
     reportCard(d);
   } else if (ev.type === "error") {
@@ -210,7 +252,7 @@ function handleEvent(ev) {
 
 /* ---------- SSE 订阅 ---------- */
 const EVENT_TYPES = ["start", "step", "reasoning", "text", "tool_call", "tool_result",
-  "report", "error", "end"];
+  "approval", "report", "error", "end"];
 
 function subscribe(runId, afterSeq = 0) {
   unsubscribe();
@@ -255,6 +297,7 @@ async function ask(question) {
   try {
     const created = await api("/api/runs", { method: "POST", body: JSON.stringify({ input: question }) });
     subscribe(created.id, 0);
+    setTimeout(() => loadPendingApprovals(created.id), 1500);
     loadRuns();
   } catch (e) {
     addError(e.message);
@@ -298,6 +341,14 @@ function openRun(runId) {
   setBusy(true);
   loadRuns();
   subscribe(runId, 0);   // after_seq=0：服务端补发全部历史事件
+}
+
+async function loadPendingApprovals(runId) {
+  // 断线重连或刷新页面后，可能错过 approval 事件；补拉一次更稳。
+  try {
+    const data = await api("/api/runs/" + runId + "/approvals");
+    data.approvals.forEach((ap) => approvalCard({ approval: ap }));
+  } catch (e) { /* 无待决审批时也会走到这里，忽略 */ }
 }
 
 async function loadTools() {

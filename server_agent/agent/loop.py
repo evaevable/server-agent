@@ -59,6 +59,9 @@ class Agent:
         timeout: float | None = None,
         stream: bool = True,
         report: bool = True,
+        approver=None,
+        policy=None,
+        audit=None,
         clock: Callable[[], float] = time.monotonic,
     ):
         s = get_settings()
@@ -73,6 +76,10 @@ class Agent:
         self.stream = stream
         self.report_enabled = report
         self.report_repair = s.report_repair
+        # 第 09 章：策略层与审批。approver 是 async 回调，返回 True 才允许执行高危操作。
+        self.approver = approver
+        self.policy = policy
+        self.audit = audit
         self.budget = ContextBudget(max_tokens=s.context_max_tokens,
                                     reserve_output=s.context_reserve_output,
                                     keep_recent_tool_msgs=s.context_keep_recent)
@@ -177,7 +184,7 @@ class Agent:
                         await emit("tool_call", {"id": tc.id, "name": tc.name, "arguments": tc.arguments})
                     async for e in flush():
                         yield e
-                    results = await self._run_tools(calls, seen_calls, emit)
+                    results = await self._run_tools(calls, seen_calls, emit, run_id)
                     for tc, result in zip(calls, results):
                         tool_call_count += 1
                         messages.append(Message.tool(tc.id, result))
@@ -257,7 +264,8 @@ class Agent:
         report, error2 = parse_report(repaired.message.content or "")
         return (report, None) if report is not None else (None, error2 or error)
 
-    async def _run_tools(self, calls: list[ToolCall], seen: set[tuple[str, str]], emit) -> list[str]:
+    async def _run_tools(self, calls: list[ToolCall], seen: set[tuple[str, str]], emit,
+                         run_id: str = "") -> list[str]:
         """执行本轮全部工具调用，返回与 calls 等长的「观察」文本列表。
 
         多个调用并行执行（asyncio.gather）；重复调用不执行，直接回一句提醒。
@@ -277,7 +285,8 @@ class Agent:
                 await emit("tool_result", {"id": tc.id, "name": tc.name, "ok": False, "content": msg,
                                            "chars": len(msg), "skipped": "bad_json"})
                 return msg
-            r = await self.tools.call(tc.name, args)
+            r = await self.tools.call(tc.name, args, policy=self.policy, approver=self.approver,
+                                      audit=self.audit, run_id=run_id)
             await emit("tool_result", {"id": tc.id, "name": tc.name, "ok": r.ok, "content": r.content,
                                        "chars": len(r.content), "truncated": r.truncated,
                                        "elapsed_ms": r.elapsed_ms})

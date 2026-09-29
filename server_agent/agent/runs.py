@@ -54,10 +54,14 @@ class Run:
 
 
 class RunManager:
-    def __init__(self, agent_factory: Callable[[], Agent], store: Store | None = None):
+    def __init__(self, agent_factory: Callable[[], Agent], store: Store | None = None,
+                 approvals=None, policy=None, audit=None):
         self._factory = agent_factory
         self._runs: dict[str, Run] = {}
-        self.store = store  # 传了就把 run 与事件落库（第 08 章）
+        self.store = store            # 传了就把 run 与事件落库（第 08 章）
+        self.approvals = approvals    # ApprovalManager（第 09 章）
+        self.policy = policy
+        self.audit = audit
 
     # ---------- 查询 ----------
     def get(self, run_id: str) -> Run | None:
@@ -73,11 +77,27 @@ class RunManager:
         run = Run(id=f"run_{uuid.uuid4().hex[:12]}", input=user_input)
         # 每个 run 一个独立的 Agent 实例：第 04 章说过实例状态（usage / last_result）不适合并发
         agent = self._factory()
+        if self.policy is not None:
+            agent.policy = self.policy
+        if self.audit is not None:
+            agent.audit = self.audit
+        if self.approvals is not None:
+            agent.approver = self._make_approver(run)
         recorder = Recorder(self.store, run.id, user_input) if self.store else None
         run.task = asyncio.create_task(self._drive(run, agent, history, recorder))
         self._runs[run.id] = run
         self._evict()
         return run
+
+    def _make_approver(self, run: Run):
+        """构造审批回调：把审批请求作为事件推给订阅者，然后等 /api 或 WS 的裁决。"""
+        async def on_request(approval) -> None:
+            run.events.append(Event("approval", run.id, (run.events[-1].seq if run.events else 0) + 1,
+                                    {"approval": approval.public()}))
+            for q in list(run.subscribers):
+                q.put_nowait(run.events[-1])
+
+        return self.approvals.make_approver(run.id, on_request=on_request)
 
     async def _drive(self, run: Run, agent: Agent, history: list | None,
                      recorder: Recorder | None = None) -> None:
@@ -100,6 +120,8 @@ class RunManager:
             run.status = "error"
             run.error = f"{type(e).__name__}: {e}"
         finally:
+            if self.approvals is not None:
+                self.approvals.cancel_run(run.id, reason="run 已结束")
             run.finished_at = time.time()
             if recorder and run.result:
                 recorder.finish(run.result, status=run.status, error=run.error)

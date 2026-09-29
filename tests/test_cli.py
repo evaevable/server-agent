@@ -2,6 +2,8 @@ import json
 
 from server_agent import __version__
 from server_agent.cli import main
+from server_agent.llm.mock import MockLLM, tool_call
+from server_agent.tools import registry
 
 
 def test_version(capsys):
@@ -24,7 +26,7 @@ def test_tools_list_and_schema(capsys):
     assert main(["tools", "list", "--schema"]) == 0
     schemas = json.loads(capsys.readouterr().out)
     names = {s["function"]["name"] for s in schemas}
-    assert len(schemas) == 8 and schemas[0]["type"] == "function"
+    assert len(schemas) == 12 and schemas[0]["type"] == "function"
     assert {"disk_usage", "recall_host", "remember_fact"} <= names
 
 
@@ -174,3 +176,85 @@ def test_history_empty(capsys, monkeypatch, tmp_path):
         assert "还没有历史记录" in capsys.readouterr().out
     finally:
         reset_store()
+
+
+def test_ask_with_no_approval_denies_and_audits(capsys, monkeypatch, tmp_path):
+    """--no-approval：高危操作直接拒绝；拒绝会写进审计日志。"""
+    from server_agent.agent.loop import Agent
+    from server_agent.policy import AuditLog, Policy, reset_audit
+    from server_agent.tools import ops
+
+    monkeypatch.setattr(ops, "_service_restart", lambda name: (_ for _ in ()).throw(AssertionError("不应执行")))
+    audit = AuditLog(tmp_path / "audit.jsonl")
+    reset_audit(audit)
+    monkeypatch.setenv("SA_AUDIT_PATH", str(tmp_path / "audit.jsonl"))
+
+    async def run():
+        llm = MockLLM([tool_call("restart_service", {"name": "nginx", "dry_run": False}), "好的"])
+        agent = Agent(llm, registry, stream=False, policy=Policy(), audit=audit, report=False)
+        return [ev async for ev in agent.run("重启 nginx")]
+
+    import asyncio
+
+    events = asyncio.run(run())
+    tr = next(e for e in events if e.type == "tool_result")
+    assert tr.data["ok"] is False and "审批" in tr.data["content"]
+    decisions = [r["decision"] for r in audit.records() if r["event"] in ("approval", "denied")]
+    assert "approval" in decisions
+
+
+def test_audit_command(capsys, monkeypatch, tmp_path):
+    from server_agent.policy import AuditLog, reset_audit
+
+    audit = AuditLog(tmp_path / "a.jsonl")
+    audit.log("tool_call", run_id="r1", tool="disk_usage", decision="allow")
+    audit.log("denied", run_id="r1", tool="clean_directory", decision="forbidden", detail="路径不在白名单")
+    reset_audit(audit)
+    try:
+        assert main(["audit"]) == 0
+        out = capsys.readouterr().out
+        assert "disk_usage" in out and "forbidden" in out
+        assert main(["audit", "-v"]) == 0
+        assert "路径不在白名单" in capsys.readouterr().out
+    finally:
+        reset_audit()
+
+
+def test_audit_command_empty(capsys, monkeypatch, tmp_path):
+    from server_agent.policy import AuditLog, reset_audit
+
+    reset_audit(AuditLog(tmp_path / "none.jsonl"))
+    try:
+        assert main(["audit"]) == 0
+        assert "还没有审计记录" in capsys.readouterr().out
+    finally:
+        reset_audit()
+
+
+def test_tools_call_goes_through_policy(capsys, monkeypatch, tmp_path):
+    """回归测试：`tools call` 也不能绕过策略层。
+
+    第 09 章发现过真实漏洞：这条路径曾经直接执行了 `rm -rf /`（幸好被系统拦住）。
+    安全的正确姿势是「挂到所有入口」，而不是只挂 Agent 循环。
+    """
+    from server_agent.policy import AuditLog, reset_audit
+
+    audit = AuditLog(tmp_path / "t.jsonl")
+    reset_audit(audit)
+    monkeypatch.setenv("SA_AUDIT_PATH", str(tmp_path / "t.jsonl"))
+    try:
+        # 危险命令：策略直接拒绝，且不执行
+        assert main(["tools", "call", "run_command", '{"command": "rm -rf /"}']) == 1
+        out = capsys.readouterr()
+        assert "策略拒绝" in out.out
+        assert any(r["decision"] == "forbidden" for r in audit.records())
+
+        # 高危操作：非交互模式下按拒绝处理
+        assert main(["tools", "call", "restart_service", '{"name": "nginx"}', "--no-approval"]) == 1
+        assert "审批未通过" in capsys.readouterr().out
+
+        # 只读工具正常放行
+        assert main(["tools", "call", "host_info"]) == 0
+        assert "hostname" in capsys.readouterr().out
+    finally:
+        reset_audit()

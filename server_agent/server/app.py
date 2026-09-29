@@ -48,7 +48,17 @@ def create_app(settings: Settings | None = None,
     app.state.agent_factory = agent_factory or default_agent_factory
     app.state.registry = tools_registry
     app.state.store = store
-    app.state.runs = RunManager(app.state.agent_factory, store=store)
+    # 第 09 章：策略、审批、审计
+    from server_agent.policy import ApprovalManager, Policy, get_audit  # noqa: PLC0415
+
+    app.state.policy = Policy(allowed_paths=tuple(settings.policy_allow_paths),
+                              allowed_services=tuple(settings.policy_allow_services),
+                              require_approval=settings.policy_require_approval)
+    app.state.approvals = ApprovalManager(timeout=settings.approval_timeout)
+    app.state.audit = get_audit() if settings.audit_enabled else None
+    app.state.runs = RunManager(app.state.agent_factory, store=store,
+                                approvals=app.state.approvals, policy=app.state.policy,
+                                audit=app.state.audit)
 
     if settings.cors_origins:
         app.add_middleware(

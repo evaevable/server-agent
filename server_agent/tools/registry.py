@@ -158,7 +158,8 @@ class ToolRegistry:
         return [t.schema() for t in self._tools.values() if names is None or t.name in names]
 
     # ---------- 调用 ----------
-    async def call(self, name: str, arguments: dict | str | None = None) -> ToolResult:
+    async def call(self, name: str, arguments: dict | str | None = None, *,
+                   policy=None, approver=None, audit=None, run_id: str = "") -> ToolResult:
         """执行工具。任何失败都变成 ok=False 的 ToolResult，绝不向上抛异常：
         第 04 章的 Agent 循环会把错误作为「观察」回喂给模型，让它自己纠正。"""
         start = time.perf_counter()
@@ -185,22 +186,67 @@ class ToolRegistry:
             return fail(_format_validation_error(e))
 
         kwargs = {k: getattr(params, k) for k in t.params.model_fields}
+
+        # ---------- 第 09 章：策略层。所有副作用都要过这道关 ----------
+        if policy is not None:
+            decision = policy.decide(t.name, kwargs, risk=t.risk)
+            if not decision.allowed:
+                if audit:
+                    audit.log("denied", run_id=run_id, tool=t.name, args=kwargs,
+                              decision="forbidden", detail=decision.reason)
+                return fail(f"策略拒绝执行：{decision.reason}")
+            if decision.needs_approval:
+                preview = kwargs
+                if "dry_run" in t.params.model_fields and not kwargs.get("dry_run"):
+                    preview = {**kwargs, "dry_run": True}
+                preview_result = await self._execute(t, preview)
+                dry_run_info = preview_result if isinstance(preview_result, (dict, list)) else str(preview_result)[:500]
+                if audit:
+                    audit.log("approval", run_id=run_id, tool=t.name, args=kwargs,
+                              decision="approval", approved=None, detail=decision.reason)
+                approved = False
+                if approver is not None:
+                    approved = await approver(t.name, kwargs, dry_run_info, decision.reason)
+                if not approved:
+                    if audit:
+                        audit.log("denied", run_id=run_id, tool=t.name, args=kwargs,
+                                  decision="approval", approved=False,
+                                  detail="人工审批未通过（超时或拒绝一律视为不批准）")
+                    return fail("人工审批未通过：该操作未执行。"
+                                "如果你认为确有必要，请向用户说明原因并请其手动执行或重新批准。")
+                if audit:
+                    audit.log("approved", run_id=run_id, tool=t.name, args=kwargs,
+                              decision="approval", approved=True, detail="人工已批准")
+            if audit:
+                audit.log("tool_call", run_id=run_id, tool=t.name, args=kwargs, decision=decision.label)
+
         try:
-            if inspect.iscoroutinefunction(t.func):
-                result = await asyncio.wait_for(t.func(**kwargs), t.timeout)
-            else:  # 同步函数放进线程池，避免阻塞事件循环（第 05 章服务化时很重要）
-                result = await asyncio.wait_for(asyncio.to_thread(t.func, **kwargs), t.timeout)
+            result = await self._execute(t, kwargs)
         except asyncio.TimeoutError:
             return fail(f"工具执行超时（>{t.timeout} 秒）")
         except ToolError as e:
+            if audit:
+                audit.log("error", run_id=run_id, tool=t.name, args=kwargs, ok=False, detail=str(e))
             return fail(str(e))
         except Exception as e:  # noqa: BLE001 —— 工具内部任何异常都转成可读错误
+            if audit:
+                audit.log("error", run_id=run_id, tool=t.name, args=kwargs, ok=False,
+                          detail=f"{type(e).__name__}: {e}")
             return fail(f"{type(e).__name__}: {e}")
 
         text = result if isinstance(result, str) else json.dumps(result, ensure_ascii=False, default=str)
         content, cut = truncate(text, t.max_chars)
-        return ToolResult(name, True, content, data=result, truncated=cut,
-                          elapsed_ms=round((time.perf_counter() - start) * 1000, 1))
+        elapsed = round((time.perf_counter() - start) * 1000, 1)
+        if audit:
+            audit.log("tool_result", run_id=run_id, tool=t.name, args=kwargs, ok=True,
+                      duration_ms=elapsed, detail=content[:300])
+        return ToolResult(name, True, content, data=result, truncated=cut, elapsed_ms=elapsed)
+
+    async def _execute(self, t: Tool, kwargs: dict):
+        """真正调用工具函数。同步函数放进线程池，避免阻塞事件循环。"""
+        if inspect.iscoroutinefunction(t.func):
+            return await asyncio.wait_for(t.func(**kwargs), t.timeout)
+        return await asyncio.wait_for(asyncio.to_thread(t.func, **kwargs), t.timeout)
 
 
 # 全局默认注册表。system.py 等模块用 @tool 把工具注册到这里。

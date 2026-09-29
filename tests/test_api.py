@@ -207,3 +207,98 @@ def test_history_empty_when_memory_disabled():
     with client(memory_enabled=False) as c:
         body = c.get("/api/history").json()
         assert body["count"] == 0 and "未启用记忆" in body["hint"]
+
+
+def test_approval_flow_over_api(tmp_path):
+    """高危操作必须经 API 批准才执行；拒绝或超时一律不执行。"""
+    from server_agent.policy import ApprovalManager
+
+    executed = []
+    from server_agent.tools import ops
+
+    original = ops._service_restart
+    ops._service_restart = lambda name: (executed.append(name) or ops.CommandOutcome(True, "ok", 0))
+
+    def ops_factory():
+        from server_agent.llm.mock import text as _text
+        from server_agent.tools import registry as global_registry
+
+        return Agent(MockLLM([tool_call("restart_service", {"name": "nginx", "dry_run": False}), _text(REPORT_JSON)]),
+                     global_registry, stream=False)
+
+    app = create_app(Settings(approval_timeout=0.3, memory_enabled=False), agent_factory=ops_factory,
+                     store=None)
+    try:
+        with TestClient(app) as c:
+            run_id = c.post("/api/runs", json={"input": "重启 nginx"}).json()["id"]
+            pending = []
+            for _ in range(60):          # 等审批请求出现
+                data = c.get(f"/api/runs/{run_id}/approvals").json()
+                if data["count"]:
+                    pending = data["approvals"]
+                    break
+                import time as _t
+                _t.sleep(0.02)
+            assert pending, "没有产生审批请求"
+            ap = pending[0]
+            assert ap["tool"] == "restart_service" and ap["status"] == "pending"
+            assert ap["dry_run"]["dry_run"] is True          # 审批前已备好预演结果
+
+            r = c.post(f"/api/runs/{run_id}/approvals/{ap['id']}", json={"approved": True})
+            assert r.status_code == 200 and r.json()["approval"]["status"] == "approved"
+            assert c.post(f"/api/runs/{run_id}/approvals/{ap['id']}", json={"approved": True}).status_code == 409
+
+            import time as _t
+            for _ in range(80):
+                if c.get(f"/api/runs/{run_id}").json()["status"] != "running":
+                    break
+                _t.sleep(0.02)
+            assert executed == ["nginx"], "批准后应真正执行一次"
+
+    finally:
+        ops._service_restart = original
+
+
+def test_approval_timeout_denies(tmp_path):
+    from server_agent.tools import ops
+
+    executed = []
+    original = ops._service_restart
+    ops._service_restart = lambda name: (executed.append(name) or ops.CommandOutcome(True, "ok", 0))
+
+    def ops_factory():
+        from server_agent.llm.mock import text as _text
+        from server_agent.tools import registry as global_registry
+
+        return Agent(MockLLM([tool_call("restart_service", {"name": "nginx", "dry_run": False}), _text(REPORT_JSON)]),
+                     global_registry, stream=False)
+
+    app = create_app(Settings(approval_timeout=0.15, memory_enabled=False), agent_factory=ops_factory)
+    try:
+        with TestClient(app) as c:
+            run_id = c.post("/api/runs", json={"input": "重启 nginx"}).json()["id"]
+            import time as _t
+            for _ in range(120):
+                if c.get(f"/api/runs/{run_id}").json()["status"] != "running":
+                    break
+                _t.sleep(0.02)
+            detail = c.get(f"/api/runs/{run_id}").json()
+            assert detail["status"] == "done"
+            assert not executed, "没人批准时绝不能执行"
+    finally:
+        ops._service_restart = original
+
+
+def test_audit_endpoint_records_policy_decisions():
+    with client(memory_enabled=False) as c:
+        body = c.get("/api/audit").json()
+        assert "records" in body
+        hint = body.get("hint")
+        assert hint is None or "未启用" in hint
+
+
+def test_approvals_unknown_ids_404():
+    with client(memory_enabled=False) as c:
+        run_id = c.post("/api/runs", json={"input": "x"}).json()["id"]
+        assert c.post(f"/api/runs/{run_id}/approvals/ap_nope", json={"approved": True}).status_code == 404
+        assert c.get("/api/runs/run_nope/approvals").json()["count"] == 0

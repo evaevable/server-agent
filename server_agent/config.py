@@ -43,6 +43,16 @@ class Settings(BaseSettings):
                                            validation_alias=AliasChoices("LLM_EXTRA_BODY", "SA_LLM_EXTRA_BODY"),
                                            description='JSON，合并进请求体的厂商私有参数，如 {"thinking":{"type":"disabled"}}')
 
+    # ---- 第 09 章：安全策略 ----
+    policy_allow_paths: list[str] = Field(default_factory=lambda: ["/tmp", "/var/tmp"],
+                                          description="clean_directory 允许的路径前缀（白名单）")
+    policy_allow_services: list[str] = Field(default_factory=lambda: ["nginx", "redis", "redis-server"],
+                                             description="restart_service 允许的服务白名单")
+    policy_require_approval: bool = Field(True, description="high 风险操作是否必须人工审批")
+    approval_timeout: float = Field(120.0, gt=0, description="审批等待超时（秒），超时按拒绝处理")
+    audit_enabled: bool = Field(True, description="是否写审计日志")
+    audit_path: str = Field("data/audit.jsonl", description="审计日志路径（JSONL）")
+
     # ---- 第 08 章：记忆与上下文 ----
     db_path: str = Field("data/server_agent.db", description="SQLite 数据库路径")
     context_max_tokens: int = Field(32000, ge=1000, description="模型上下文窗口（token）")
