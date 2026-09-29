@@ -1,21 +1,54 @@
-"""HTTP 服务入口。第 01 章只有健康检查，第 05 章起在这里挂载 Agent 的 API。"""
+"""HTTP 服务入口。
+
+第 01 章只有健康检查；第 05 章挂上了 Agent 的 API 与 WebSocket。
+第 06 章会在这里托管前端静态文件。
+
+应用工厂模式：create_app(settings, agent_factory) 每次返回一个新的 FastAPI 实例，
+测试可以注入 MockLLM 的 agent_factory，完全离线运行。
+"""
 
 from __future__ import annotations
 
 import time
+from typing import Callable
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from server_agent import __version__
+from server_agent.agent.loop import Agent
+from server_agent.agent.runs import RunManager
 from server_agent.config import Settings, get_settings
+from server_agent.server import api, ws
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """应用工厂：每次调用返回一个新的 FastAPI 实例，便于测试注入不同配置。"""
+def default_agent_factory() -> Agent:
+    """生产路径：按配置创建真实模型客户端 + 默认工具注册表。"""
+    from server_agent.llm import create_llm
+
+    return Agent(create_llm())
+
+
+def create_app(settings: Settings | None = None,
+               agent_factory: Callable[[], Agent] | None = None,
+               tools_registry=None) -> FastAPI:
     settings = settings or get_settings()
+    if tools_registry is None:
+        from server_agent.tools import registry as tools_registry  # noqa: PLC0415
     app = FastAPI(title="server-agent", version=__version__)
     app.state.settings = settings
     app.state.started_at = time.time()
+    app.state.agent_factory = agent_factory or default_agent_factory
+    app.state.registry = tools_registry
+    app.state.runs = RunManager(app.state.agent_factory)
+
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
     @app.get("/health")
     def health() -> dict:
@@ -23,6 +56,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok",
             "version": __version__,
             "uptime_seconds": round(time.time() - app.state.started_at, 3),
+            "auth": bool(settings.api_token),
         }
 
+    app.include_router(api.router)
+    app.include_router(ws.router)
     return app

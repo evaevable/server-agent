@@ -15,7 +15,7 @@
 | | 02 | 和大模型说话：LLM 调用层 | Provider 抽象、流式输出、MockLLM | [已发布](docs/chapters/02-llm-layer.md) |
 | | 03 | 给 Agent 装上手：工具调用 Function Calling | 工具注册表 + 6 个只读排障工具 | [已发布](docs/chapters/03-tool-calling.md) |
 | | 04 | Agent 的心跳：ReAct 循环 | Agent Loop、事件模型、`ask` 命令 | [已发布](docs/chapters/04-react-loop.md) |
-| 二、产品化 | 05 | 走出终端：HTTP API、SSE 与 WebSocket | 后端服务、事件流协议、鉴权 | 待发布 |
+| 二、产品化 | 05 | 走出终端：HTTP API、SSE 与 WebSocket | 后端服务、事件流协议、鉴权 | [已发布](docs/chapters/05-api-streaming.md) |
 | | 06 | 看得见的思考：前端交互界面 | Web 控制台、时间线、中断 | 待发布 |
 | | 07 | 给 Agent 立规矩：Prompt 工程与结构化输出 | SRE 系统提示词、诊断报告 Schema | 待发布 |
 | 三、可信 | 08 | 记性与注意力：上下文管理与记忆 | 输出截断/压缩、会话持久化、主机档案 | 待发布 |
@@ -117,6 +117,7 @@ server-agent chat --mock    # 无需 API Key 体验对话；填好 .env 里的 L
 server-agent tools list     # 查看 6 个只读排障工具
 server-agent tools call disk_usage '{"path": "/"}'
 server-agent ask "这台机器为什么卡"   # 让 Agent 自己多步排查（需先配置 .env）
+SA_API_TOKEN=devtoken server-agent serve   # 启动服务，接口见 docs/api.md
 ```
 
-模块文档：[config / cli / server 骨架](docs/modules/config.md) · [llm 调用层](docs/modules/llm.md) · [tools 工具层](docs/modules/tools.md) · [agent 循环](docs/modules/agent-loop.md)
+模块文档：[config / cli / server 骨架](docs/modules/config.md) · [llm 调用层](docs/modules/llm.md) · [tools 工具层](docs/modules/tools.md) · [agent 循环](docs/modules/agent-loop.md) · [server 服务层](docs/modules/server.md) · [HTTP/WS 接口](docs/api.md)

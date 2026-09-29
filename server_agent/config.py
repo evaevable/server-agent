@@ -42,6 +42,10 @@ class Settings(BaseSettings):
                                            validation_alias=AliasChoices("LLM_EXTRA_BODY", "SA_LLM_EXTRA_BODY"),
                                            description='JSON，合并进请求体的厂商私有参数，如 {"thinking":{"type":"disabled"}}')
 
+    # ---- 第 05 章：服务 ----
+    cors_origins: list[str] = Field(default_factory=list,
+                                    description="允许跨域的前端来源，如 ['http://localhost:5173']；空表示不启用 CORS")
+
     # ---- 第 04 章：Agent 循环 ----
     agent_max_steps: int = Field(12, ge=1, le=50, description="单次提问最多几步（一步=一次模型调用）")
     agent_timeout: float = Field(300.0, gt=0, description="单次提问的总超时（秒）")
