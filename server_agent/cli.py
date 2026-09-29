@@ -2,7 +2,8 @@
 
 第 01 章：version / config / serve
 第 02 章：chat（纯对话，还没有工具）
-第 03 章起陆续增加：tools / ask ...
+第 03 章：tools list / tools call（手动调用工具）
+第 04 章起：ask ...
 """
 
 from __future__ import annotations
@@ -112,6 +113,36 @@ async def _chat_loop(args: argparse.Namespace) -> int:
             await llm.aclose()
 
 
+def _cmd_tools_list(args: argparse.Namespace) -> int:
+    from server_agent.tools import registry
+
+    if args.schema:
+        print(json.dumps(registry.schemas(), ensure_ascii=False, indent=2))
+        return 0
+    for t in registry.list():
+        first = t.description.splitlines()[0]
+        params = ", ".join(t.params.model_fields) or "-"
+        print(f"{t.name:<18} [{t.risk}] ({params})\n    {first}")
+    print(f"\n共 {len(registry)} 个工具。用 --schema 查看模型实际看到的 JSON Schema。", file=sys.stderr)
+    return 0
+
+
+def _cmd_tools_call(args: argparse.Namespace) -> int:
+    import asyncio
+
+    from server_agent.tools import registry
+
+    r = asyncio.run(registry.call(args.name, args.args))
+    try:
+        print(json.dumps(json.loads(r.content), ensure_ascii=False, indent=2))
+    except json.JSONDecodeError:
+        print(r.content)
+    flag = "ok" if r.ok else "error"
+    extra = "，结果已截断" if r.truncated else ""
+    print(f"[{flag}] {r.name} {r.elapsed_ms}ms，回喂模型 {len(r.content)} 字符{extra}", file=sys.stderr)
+    return 0 if r.ok else 1
+
+
 DEFAULT_SYSTEM = "你是一名资深 Linux 运维工程师，回答简洁、给出可执行的命令。"
 
 
@@ -133,6 +164,16 @@ def build_parser() -> argparse.ArgumentParser:
     cp.add_argument("--system", default=DEFAULT_SYSTEM, help="系统提示词")
     cp.add_argument("-v", "--verbose", action="store_true", help="打印 token 用量与历史长度")
     cp.set_defaults(func=_cmd_chat)
+
+    tp = sub.add_parser("tools", help="查看与手动调用工具（第 03 章）")
+    tsub = tp.add_subparsers(dest="tools_cmd", required=True)
+    tl = tsub.add_parser("list", help="列出全部工具")
+    tl.add_argument("--schema", action="store_true", help="输出发给模型的 JSON Schema")
+    tl.set_defaults(func=_cmd_tools_list)
+    tc = tsub.add_parser("call", help="手动调用一个工具")
+    tc.add_argument("name", help="工具名")
+    tc.add_argument("args", nargs="?", default="{}", help='JSON 参数，如 \'{"path": "/"}\'')
+    tc.set_defaults(func=_cmd_tools_call)
     return p
 
 
