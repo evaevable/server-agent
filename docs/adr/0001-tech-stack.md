@@ -22,6 +22,7 @@
 | Agent 编排 | 手写循环 | LangGraph、OpenAI Agents SDK、CrewAI | 框架会把最该学的东西（消息往返、停止条件、错误回喂）藏起来。先手写，附录 A 再做映射，学完再用框架会更清楚它在做什么 |
 | 前端 | 原生 HTML/JS/CSS | React、Vue | 无构建步骤、零依赖；本课程的重点不是前端 |
 | 远程执行 | asyncssh | paramiko、Fabric | 原生 asyncio，与 FastAPI 事件循环一致 |
+| 代码沙箱（2026-09-29 补充） | 本地 Docker 默认 + 腾讯云 AGS 可选 | 纯 subprocess、E2B 官方云 | subprocess 隔离太弱；托管沙箱启动快、隔离强，AGS 兼容 E2B 协议便于迁移；本地 Docker 保证无 Key 也能学、测试免费。详见 ADR-0003（第 11 章） |
 | 持久化 | SQLite | PostgreSQL | 本地零运维；接口抽象好后可替换 |
 | 测试 | pytest + MockLLM | 录制真实响应 | Mock 让 Agent 行为测试确定、免费、离线可跑 |
 
