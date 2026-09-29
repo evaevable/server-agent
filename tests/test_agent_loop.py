@@ -53,7 +53,7 @@ async def test_two_step_run_feeds_tool_result_back():
     # 文本事件可能被拆成多片（流式逐字），先折叠连续的 text
     collapsed = [t for i, t in enumerate(types) if t != "text" or (i == 0 or types[i - 1] != "text")]
     assert collapsed == ["start", "step", "tool_call", "tool_result", "step", "text", "report", "end"]
-    assert events[-2].data["parsed"] is False   # 本轮结论不是 JSON，报告解析失败（第 07 章）
+    assert events[-2].data["parsed"] is False   # 本轮结论不是 JSON，报告解析失败
     assert "".join(e.data["text"] for e in events if e.type == "text") == "根分区 97%，建议清理 /var/log"
     assert events[0].data["tools"] == ["disk_usage", "top_processes"]
     end = events[-1].data
@@ -222,7 +222,7 @@ async def test_context_compression_emits_event_and_fits_budget():
 
     script = []
     for i in range(3):
-        # 参数必须不同：完全相同的调用会被第 04 章的重复检测拦下
+        # 参数必须不同：完全相同的调用会被重复调用检测拦下
         script.append(ChatResponse(Message.assistant(None, [ToolCall(f"c{i}", "big_tool", f'{{"i": {i}}}')]),
                                    finish_reason="tool_calls"))
     script.append("查完了")

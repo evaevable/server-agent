@@ -1,4 +1,4 @@
-"""第 14 章：MCP Server / Client 测试。
+"""MCP Server / Client 测试。
 
 分两层：
 1. **进程内**：直接测 JSON-RPC handler（快、稳定）；

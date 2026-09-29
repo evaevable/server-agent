@@ -1,7 +1,7 @@
 """LLM 调用层的公共数据结构与协议。
 
 整个项目只通过这里定义的类型和模型打交道：换模型厂商、换成 MockLLM，
-上层（第 04 章的 Agent 循环）一行都不用改。
+上层（Agent 循环）一行都不用改。
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@
 - 事件要在内存里留一份：客户端晚连、断线重连（带 Last-Event-ID）时能补发。
 - 任务要能取消：用户点了「停止」，得让 asyncio 任务真的停下来。
 
-存储是内存版（进程重启即丢），第 08 章会换成 SQLite 持久化。
+内存里保留最近的 run 用于订阅与补发；传入 store 时同时落 SQLite，进程重启后仍可查历史。
 """
 
 from __future__ import annotations
@@ -61,8 +61,8 @@ class RunManager:
                  approvals=None, policy=None, audit=None):
         self._factory = agent_factory
         self._runs: dict[str, Run] = {}
-        self.store = store            # 传了就把 run 与事件落库（第 08 章）
-        self.approvals = approvals    # ApprovalManager（第 09 章）
+        self.store = store            # 传了就把 run 与事件落库
+        self.approvals = approvals    # ApprovalManager
         self.policy = policy
         self.audit = audit
 
@@ -78,7 +78,7 @@ class RunManager:
         """创建并启动一个 run。必须是 async：asyncio.create_task 只能在事件循环里调用
         （同步的 FastAPI 路由跑在线程池里，没有事件循环，会报 no running event loop）。"""
         run = Run(id=f"run_{uuid.uuid4().hex[:12]}", input=user_input)
-        # 每个 run 一个独立的 Agent 实例：第 04 章说过实例状态（usage / last_result）不适合并发
+        # 每个 run 一个独立的 Agent 实例：实例状态（usage / last_result）不适合并发共享
         agent = self._factory()
         if self.policy is not None:
             agent.policy = self.policy

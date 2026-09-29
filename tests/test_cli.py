@@ -234,7 +234,7 @@ def test_audit_command_empty(capsys, monkeypatch, tmp_path):
 def test_tools_call_goes_through_policy(capsys, monkeypatch, tmp_path):
     """回归测试：`tools call` 也不能绕过策略层。
 
-    第 09 章发现过真实漏洞：这条路径曾经直接执行了 `rm -rf /`（幸好被系统拦住）。
+    曾经出现过的真实漏洞：这条路径曾经直接执行了 `rm -rf /`。
     安全的正确姿势是「挂到所有入口」，而不是只挂 Agent 循环。
     """
     from server_agent.policy import AuditLog, reset_audit

@@ -9,7 +9,7 @@ Plan-and-Execute 的取舍：
 - 优点：有计划、可展示、可复规划、能对齐「专家会怎么查」；
 - 代价：多一次模型调用（生成计划）；计划可能一开始就不对（所以要允许重规划）。
 
-本章的实现刻意保持简单：
+当前实现刻意保持简单：
 1. 生成计划（一次 LLM 调用，产出步骤列表）；
 2. 把计划写进提示词，让 ReAct 循环按计划推进；
 3. 每步结束后打勾；若某步失败，允许一次「重规划」。
@@ -25,7 +25,7 @@ from typing import Any
 from server_agent.llm.base import LLMClient, LLMError, Message
 
 # 注意：模板里必须用 $question 而不是 {question}——示例 JSON 自带花括号，
-# 用 str.format 会把它当成字段名（KeyError: '"steps"'）。这是第 07 章踩过的同一个坑。
+# 用 str.format 会把它当成字段名（KeyError: '"steps"'）。
 PLAN_INSTRUCTION = Template("""先不要执行任何工具。请为下面的问题制定一个排查计划。
 
 要求：

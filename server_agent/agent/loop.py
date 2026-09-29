@@ -7,8 +7,8 @@
 4. 回到第 1 步，直到模型给出回答或触发停止条件。
 
 设计要点：
-- 这里是 async generator：每发生一件事就 yield 一个事件，第 05 章可以直接推给 WebSocket。
-- 任何工具失败都变成「观察」回喂给模型，不中断循环（第 03 章 registry.call 从不抛异常）。
+- 这里是 async generator：每发生一件事就 yield 一个事件，服务层可以直接推给 SSE / WebSocket。
+- 任何工具失败都变成「观察」回喂给模型，不中断循环（registry.call 从不抛异常）。
 - 三个刹车：最大步数、整次运行超时、重复调用检测。
 """
 
@@ -78,13 +78,13 @@ class Agent:
         self.stream = stream
         self.report_enabled = report
         self.report_repair = s.report_repair
-        # 第 09 章：策略层与审批。approver 是 async 回调，返回 True 才允许执行高危操作。
+        # 策略层与审批。approver 是 async 回调，返回 True 才允许执行高危操作。
         self.approver = approver
         self.policy = policy
         self.audit = audit
         self.planning = s.agent_planning if planning is None else planning
-        self.plan: "Plan | None" = None      # 第 12 章：Plan-and-Execute
-        self.trace: Trace | None = None      # 第 15 章：本次 run 的耗时树
+        self.plan: "Plan | None" = None      # Plan-and-Execute
+        self.trace: Trace | None = None      # 本次 run 的耗时树
         self.budget = ContextBudget(max_tokens=s.context_max_tokens,
                                     reserve_output=s.context_reserve_output,
                                     keep_recent_tool_msgs=s.context_keep_recent)
@@ -144,7 +144,7 @@ class Agent:
             while buf:
                 yield buf.pop(0)
 
-        # 第 12 章：Plan-and-Execute。先生成计划（一次调用），把它写进提示词，
+        # Plan-and-Execute。先生成计划（一次调用），把它写进提示词，
         # 让后面的 ReAct 循环「按计划推进」而不是走到哪算哪。
         plan_event = None
         if self.planning:

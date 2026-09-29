@@ -8,7 +8,7 @@
 
 为什么把「参数校验」放在这里，而不是工具内部？
 - 工具内部校验属于「实现细节」，容易漏；策略层是唯一入口，漏不掉；
-- 策略可配置、可审计、可测试（本章的注入攻击测试全部打在这一层）。
+- 策略可配置、可审计、可测试（提示词注入测试全部打在这一层，见 tests/test_policy.py）。
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ class Policy:
             if str(target) == bad:
                 return PolicyDecision(False, reason=f"拒绝清理受保护路径: {target}")
         # 白名单也要 resolve：macOS 上 /tmp 实际是 /private/tmp，
-        # 只归一化一边会导致「看起来允许、实际拒绝」的假阴性（本章测试踩到过）。
+        # 只归一化一边会导致「看起来允许、实际拒绝」的假阴性（macOS 上 /tmp 实际是 /private/tmp）。
         allowed = [str(self._norm(p)) for p in self.allowed_paths]
         if not any(str(target) == a or str(target).startswith(a.rstrip("/") + "/") for a in allowed):
             return PolicyDecision(False, reason=f"路径不在白名单内（允许：{', '.join(self.allowed_paths)}）",

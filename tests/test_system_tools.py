@@ -21,7 +21,7 @@ def test_all_six_tools_registered_readonly_and_schemas_valid():
             assert t.risk in ("read", "low")   # 记忆工具只写本地库，不属于系统写操作
             continue
         if t.name in HIGH_RISK_TOOLS:
-            assert t.risk == "high"            # 第 09 章：写操作必须走审批
+            assert t.risk == "high"            # 写操作必须走审批
             continue
         if t.name in LOW_RISK_TOOLS:
             assert t.risk == "low"

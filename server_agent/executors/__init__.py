@@ -1,4 +1,4 @@
-"""执行器层：本地 / SSH（第 10 章）、沙箱（第 11 章）。"""
+"""执行器层：本地 / SSH、沙箱。"""
 
 from server_agent.executors.base import ExecOutcome, Executor, ExecutorError
 from server_agent.executors.inventory import HostEntry, Inventory, get_inventory, reset_inventory

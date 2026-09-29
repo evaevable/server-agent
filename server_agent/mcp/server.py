@@ -10,7 +10,7 @@ MCP（Model Context Protocol）解决的是**工具与宿主解耦**：
     tools/call              调用工具，返回 content 数组
     ping                    探活
 
-三条与第 09 章一脉相承的规矩：
+三条与策略层一致的规矩：
 1. **默认只暴露只读工具**（read / low）。写操作要显式 `--expose-write` 才出现——
    fail-closed：不小心暴露的危害远大于少暴露。
 2. **策略层照旧生效**：MCP 只是另一个入口，参数校验、审计一样走。

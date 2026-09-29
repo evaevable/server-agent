@@ -1,7 +1,7 @@
-"""只读排障工具（第 03 章）。基于 psutil，Linux / macOS 通用。
+"""只读排障工具。基于 psutil，Linux / macOS 通用。
 
 每个工具的 docstring 与参数描述就是模型看到的全部信息，改它们等于改 Agent 的行为。
-第 10 章会把这些工具改造成支持 host 参数、在远程主机上执行。
+远程主机上的对应能力见 tools/remote.py（通过 SSH 执行只读命令并解析输出）。
 """
 
 from __future__ import annotations

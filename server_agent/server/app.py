@@ -1,7 +1,6 @@
 """HTTP 服务入口。
 
-第 01 章只有健康检查；第 05 章挂上了 Agent 的 API 与 WebSocket。
-第 06 章会在这里托管前端静态文件。
+挂载：/health（健康检查）、/api（REST + SSE）、/ws（WebSocket，含审批）、/（前端静态文件）。
 
 应用工厂模式：create_app(settings, agent_factory) 每次返回一个新的 FastAPI 实例，
 测试可以注入 MockLLM 的 agent_factory，完全离线运行。
@@ -54,7 +53,7 @@ def create_app(settings: Settings | None = None,
     app.state.agent_factory = agent_factory or default_agent_factory
     app.state.registry = tools_registry
     app.state.store = store
-    # 第 09 章：策略、审批、审计
+    # 策略、审批、审计
     from server_agent.policy import ApprovalManager, Policy, get_audit  # noqa: PLC0415
 
     app.state.policy = Policy(allowed_paths=tuple(settings.policy_allow_paths),
@@ -87,7 +86,7 @@ def create_app(settings: Settings | None = None,
     app.include_router(api.router)
     app.include_router(ws.router)
 
-    # 前端静态文件（第 06 章）。放在最后注册：/api、/ws 先匹配，不会被静态资源吞掉。
+    # 前端静态文件。放在最后注册：/api、/ws 先匹配，不会被静态资源吞掉。
     web_dir = settings.web_dir
     if web_dir and Path(web_dir).is_dir():
         app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")

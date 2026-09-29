@@ -2,7 +2,7 @@
 
 为什么要结构化？
 1. 前端能渲染成卡片（而不是一大段散文），用户一眼看到根因、置信度、建议动作；
-2. 第 15 章的评估可以**自动判定**「根因对不对」，不用人去读自然语言；
+2. 评测可以**自动判定**「根因对不对」，不用人去读自然语言；
 3. 逼模型把「猜的」和「有证据的」分开写（findings 里的每条都必须引用具体数据）。
 
 注意：模型不一定听话。所以 schema 既写进提示词（让它知道形状），
@@ -29,7 +29,7 @@ class Evidence(BaseModel):
 
 
 class Action(BaseModel):
-    """建议动作。risk 表示这个动作的危险程度，供第 09 章审批参考。"""
+    """建议动作。risk 表示这个动作的危险程度，供审批人参考。"""
 
     description: str = Field(description="要做什么，一句话")
     risk: Literal["read", "low", "high"] = Field(description="read=只读；low=影响小；high=需要审批")

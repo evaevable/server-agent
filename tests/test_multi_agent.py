@@ -1,4 +1,4 @@
-"""第 16 章：多 Agent 协作测试（角色权限隔离 + 主管编排）。"""
+"""多 Agent 协作测试（角色权限隔离 + 主管编排）。"""
 
 import asyncio
 import json
@@ -174,7 +174,7 @@ def test_supervisor_result_serializes():
 
 
 def test_verdict_prompt_survives_json_example():
-    """回归测试：模板里的示例 JSON 花括号不能再把 str.format 搞崩（本课程第三次踩坑）。"""
+    """回归测试：模板里的示例 JSON 花括号不能再把 str.format 搞崩。"""
     from server_agent.multi.supervisor import VERDICT_INSTRUCTION
 
     text = VERDICT_INSTRUCTION.substitute(report='{"root_cause": "x"}', executed="[]")

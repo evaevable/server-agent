@@ -1,4 +1,4 @@
-"""第 15 章：Trace（耗时树）与评测体系测试。"""
+"""Trace（耗时树）与评测体系测试。"""
 
 import asyncio
 import json

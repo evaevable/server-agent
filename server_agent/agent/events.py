@@ -3,7 +3,7 @@
 一次 run 就是一条事件流，按时间顺序产出：
 start -> (step -> [reasoning] -> text* -> tool_call* -> tool_result*) ... -> end
 
-事件既是终端输出和前端时间线的数据源（第 06 章），也是第 05 章向外部推送的协议格式。
+事件既是终端输出和前端时间线的数据源，也是 SSE / WebSocket 向外部推送的协议格式。
 所有事件都是可 JSON 序列化的（to_dict），字段保持扁平、便于前端渲染。
 """
 
@@ -36,7 +36,7 @@ class AgentResult:
     usage: Any = None  # server_agent.llm.Usage
     stopped: str = "final"  # final | max_steps | timeout | length | error | cancelled
     messages: list = field(default_factory=list)  # 完整消息历史，便于排查与回放
-    report: Any = None  # DiagnosticReport（第 07 章）；解析失败时为 None
+    report: Any = None  # DiagnosticReport；解析失败时为 None
     report_error: str | None = None  # 报告解析失败的原因，便于调试提示词
 
     def to_dict(self) -> dict[str, Any]:

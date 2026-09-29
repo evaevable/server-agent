@@ -3,7 +3,7 @@
 - 模板用 `string.Template`（$var 占位），不引入 Jinja2：报告 schema 里全是花括号，
   用 `str.format` 会与之冲突，Template 的 `$` 语法更省心且零依赖。
 - 变体（variant）用于 A/B 对比：`sre` 是带方法论的正经提示词，`plain` 是反面教材，
-  第 15 章的评估会量化两者的差距。
+  离线评测（evals/）可以量化两者的差距。
 """
 
 from __future__ import annotations

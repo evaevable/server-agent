@@ -8,7 +8,7 @@
 为什么要这么拆（而不是一个 Agent 干完）？
 - 权限：只读角色根本拿不到写工具（`registry_for`），被骗也伤不到系统；
 - 注意力：执行员只关心「怎么把动作做对」，不用管排查；审查员只挑毛病，不必重新排查；
-- 可评测：第 15 章的指标可以按角色拆开看（诊断命中率 / 执行成功率 / 审查发现的问题数）。
+- 可评测：评测指标可以按角色拆开看（诊断命中率 / 执行成功率 / 审查发现的问题数）。
 
 代价（必须承认）：
 - 成本更高（多几次模型调用）；
@@ -29,7 +29,7 @@ from server_agent.llm.base import LLMClient, Message
 from server_agent.multi.roles import DIAGNOSTICIAN, EXECUTOR, REVIEWER, Role, registry_for
 
 # 用 string.Template（$var）而不是 str.format：模板里有示例 JSON，
-# 花括号会被 format 当成字段名 —— 这是本课程第三次踩同一个坑（第 07、12、16 章）。
+# 花括号会被 format 当成字段名（KeyError: '"verdict"'）。项目内所有带示例 JSON 的模板都用 Template。
 VERDICT_INSTRUCTION = Template("""你是审查员。下面是本次排查的诊断报告与执行记录，请复核：
 1. 结论是否有证据支撑（有没有把猜测当事实）；
 2. 执行的动作是否越界、是否有副作用风险；

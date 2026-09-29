@@ -169,7 +169,7 @@ def report_factory():
 
 
 def test_history_endpoints_persist_runs(tmp_path):
-    """服务重启（重建 app）后，历史仍能查到 —— 这就是第 08 章「记忆」的服务端体现。"""
+    """服务重启（重建 app）后，历史仍能查到。"""
     from server_agent.memory import Store
 
     store = Store(tmp_path / "api.db")

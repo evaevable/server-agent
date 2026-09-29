@@ -1,9 +1,10 @@
 """命令行入口：server-agent <子命令>。
 
-第 01 章：version / config / serve
-第 02 章：chat（纯对话，还没有工具）
-第 03 章：tools list / tools call（手动调用工具）
-第 04 章：ask（Agent 自主多步排查）
+- version / config / serve：版本、生效配置、启动 HTTP 服务
+- chat：与模型直接对话（不带工具，用于验证模型接入）
+- tools list / tools call：查看与手动调用工具（同样经过策略层）
+- ask：Agent 自主多步排查；--plan / --multi 切换规划与多 Agent 模式
+- history / audit / eval / mcp：历史记录、审计日志、离线评测、MCP 接入
 """
 
 from __future__ import annotations
@@ -130,7 +131,7 @@ def _cmd_tools_list(args: argparse.Namespace) -> int:
 def _cmd_tools_call(args: argparse.Namespace) -> int:
     """手动调用工具。
 
-    注意：这里**必须**和 Agent 走同一条策略通道。第 09 章开发时踩过一个真实漏洞：
+    注意：这里**必须**和 Agent 走同一条策略通道。曾经出现过的真实漏洞：
     `tools call run_command '{"command":"rm -rf /"}'` 直接执行了危险命令，
     因为策略只挂在 Agent 循环上，这个入口绕过了它。
     结论：安全校验要挂在**所有**能触发副作用的入口上，而不是「主要入口」上。
@@ -191,7 +192,7 @@ async def _ask(args: argparse.Namespace) -> int:
         return 2
     run_id_holder = {"id": ""}
 
-    # 第 09 章：策略与审批。CLI 的审批人就是终端前的你（逐条确认）。
+    # 策略与审批。CLI 的审批人就是终端前的你（逐条确认）。
     from server_agent.policy import Policy, get_audit
 
     audit = get_audit() if get_settings().audit_enabled else None
@@ -226,7 +227,7 @@ async def _ask(args: argparse.Namespace) -> int:
                   report=not args.no_report, approver=approver, policy=policy, audit=audit,
                   planning=args.plan if args.plan else None)
 
-    # 第 08 章：记忆。开跑前先把历史结论注入系统提示词，跑完把本次过程落库。
+    # 记忆。开跑前先把历史结论注入系统提示词，跑完把本次过程落库。
     store = None
     recorder = None
     if get_settings().memory_enabled:
@@ -529,14 +530,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--port", type=int, default=None, help="覆盖 SA_PORT")
     sp.set_defaults(func=_cmd_serve)
 
-    cp = sub.add_parser("chat", help="与模型流式对话（第 02 章，尚无工具）")
+    cp = sub.add_parser("chat", help="与模型流式对话（不带工具，用于验证模型接入）")
     cp.add_argument("--mock", action="store_true", help="使用 MockLLM（echo），不调用真实模型")
     cp.add_argument("--once", metavar="问题", help="只问一句就退出")
     cp.add_argument("--system", default=CHAT_SYSTEM, help="系统提示词")
     cp.add_argument("-v", "--verbose", action="store_true", help="打印 token 用量与历史长度")
     cp.set_defaults(func=_cmd_chat)
 
-    tp = sub.add_parser("tools", help="查看与手动调用工具（第 03 章）")
+    tp = sub.add_parser("tools", help="查看与手动调用工具")
     tsub = tp.add_subparsers(dest="tools_cmd", required=True)
     tl = tsub.add_parser("list", help="列出全部工具")
     tl.add_argument("--schema", action="store_true", help="输出发给模型的 JSON Schema")
@@ -547,7 +548,7 @@ def build_parser() -> argparse.ArgumentParser:
     tc.add_argument("--no-approval", action="store_true", help="需要审批的操作直接拒绝（非交互场景用）")
     tc.set_defaults(func=_cmd_tools_call)
 
-    ap = sub.add_parser("ask", help="让 Agent 自主排查一个问题（第 04 章）")
+    ap = sub.add_parser("ask", help="让 Agent 自主排查一个问题")
     ap.add_argument("question", help="用自然语言描述问题")
     ap.add_argument("--mock", action="store_true", help="使用 MockLLM，不调用真实模型")
     ap.add_argument("--no-stream", action="store_true", help="不用流式，等模型一次性返回")
@@ -567,13 +568,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("-v", "--verbose", action="store_true", help="显示思考内容与工具结果片段")
     ap.set_defaults(func=_cmd_ask)
 
-    hp = sub.add_parser("history", help="查看历史排查记录（第 08 章，来自 SQLite）")
+    hp = sub.add_parser("history", help="查看历史排查记录（来自 SQLite）")
     hp.add_argument("--limit", type=int, default=10, help="列出多少条")
     hp.add_argument("--show", metavar="RUN_ID", help="查看某次运行的详情")
     hp.add_argument("--events", action="store_true", help="配合 --show：打印完整事件流")
     hp.set_defaults(func=_cmd_history)
 
-    au = sub.add_parser("audit", help="查看审计日志（第 09 章：谁在什么时候调了什么）")
+    au = sub.add_parser("audit", help="查看审计日志（谁在什么时候调了什么）")
     au.add_argument("--limit", type=int, default=30, help="显示多少条")
     au.add_argument("--memory", action="store_true", help="只看内存缓冲（默认从磁盘 JSONL 读取）")
     au.add_argument("-v", "--verbose", action="store_true", help="显示 detail 字段")

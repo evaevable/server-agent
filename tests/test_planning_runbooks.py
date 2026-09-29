@@ -1,4 +1,4 @@
-"""第 12 章：规划器、Runbook 与 Agent 规划模式测试。"""
+"""规划器、Runbook 与 Agent 规划模式测试。"""
 
 import json
 

@@ -1,4 +1,4 @@
-"""第 13 章：切块、BM25 检索、知识工具测试。"""
+"""切块、BM25 检索、知识工具测试。"""
 
 import pytest
 
@@ -142,7 +142,7 @@ async def test_search_knowledge_no_hit_hint(monkeypatch):
 
 
 def test_repo_search_finds_expected_docs():
-    """真实的仓库文档要能被搜到（这是第 17 章端到端演练的前提）。"""
+    """真实的仓库文档要能被搜到（端到端排障依赖这一点）。"""
     reset_knowledge_base(None)
     kb = get_knowledge_base()
     assert "backup" in str(kb.search("备份目录在哪", top_k=2)[0].chunk.text) or \

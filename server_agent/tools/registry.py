@@ -21,7 +21,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, create_model
 
 log = logging.getLogger(__name__)
 
-Risk = Literal["read", "low", "high", "forbidden"]  # 第 09 章据此做审批
+Risk = Literal["read", "low", "high", "forbidden"]  # 策略层据此决定是否需要审批
 DEFAULT_MAX_CHARS = 4000
 DEFAULT_TIMEOUT = 30.0
 
@@ -164,7 +164,7 @@ class ToolRegistry:
     async def call(self, name: str, arguments: dict | str | None = None, *,
                    policy=None, approver=None, audit=None, run_id: str = "") -> ToolResult:
         """执行工具。任何失败都变成 ok=False 的 ToolResult，绝不向上抛异常：
-        第 04 章的 Agent 循环会把错误作为「观察」回喂给模型，让它自己纠正。"""
+        Agent 循环会把错误作为「观察」回喂给模型，让它自己纠正。"""
         start = time.perf_counter()
 
         def fail(msg: str) -> ToolResult:
@@ -191,7 +191,7 @@ class ToolRegistry:
 
         kwargs = {k: getattr(params, k) for k in t.params.model_fields}
 
-        # ---------- 第 09 章：策略层。所有副作用都要过这道关 ----------
+        # ---------- 策略层。所有副作用都要过这道关 ----------
         if policy is not None:
             decision = policy.decide(t.name, kwargs, risk=t.risk)
             if not decision.allowed:

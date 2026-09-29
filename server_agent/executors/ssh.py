@@ -5,7 +5,7 @@
 2. **host key 校验默认开启**：不做校验等于把中间人风险揽到自己身上；演练环境可在
    inventory 里显式设 `strict_host_key=False`（并明白自己在做什么）。
 3. **远端没有 psutil 怎么办**：远端只跑白名单命令，结果由本地的「解析器」变成结构化数据
-   （见 tools/remote.py）——这也是第 10 章的核心取舍：**不为远端装依赖**。
+   （见 tools/remote.py）——这是远程执行的核心取舍：**不为远端装依赖**。
 """
 
 from __future__ import annotations

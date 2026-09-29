@@ -1,4 +1,4 @@
-/* server-agent 控制台：把第 05 章的 SSE 事件流渲染成时间线。
+/* server-agent 控制台：把 Agent 的 SSE 事件流渲染成时间线。
    零依赖、无构建：一个 HTML、一个 CSS、一个 JS。 */
 
 const $ = (id) => document.getElementById(id);
