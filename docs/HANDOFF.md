@@ -12,7 +12,7 @@
 【项目位置与状态】
 - 本地仓库：/Users/lanceche/WorkBuddy/2026-09-29-10-41-08/server-agent
 - 远程：git@github.com:evaevable/server-agent.git（push 必须用 SSH；https 形式的 git 协议在本机被拦）
-- 进度：17 章 + 3 附录全部已发布（tag ch01…ch09、ch10-ch17），README 课程表全绿
+- 进度：17 章 + 3 附录全部已发布（tag ch01…ch17；ch10…ch17 与 ch10-ch17 指向同一提交），README 课程表全绿
 - 测试基线：.venv/bin/pytest -q --basetemp=/tmp/sa-pytest → 294 passed, 1 skipped（Docker 不可用时跳过）
 - 评测基线：.venv/bin/server-agent eval --cases evals/cases → 通过率 100%
 
