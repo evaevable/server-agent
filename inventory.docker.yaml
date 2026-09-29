@@ -1,0 +1,26 @@
+# 容器内使用的清单：目标主机是 compose 里的服务名，端口是容器网络内的 22。
+defaults:
+  username: root
+  port: 22
+  strict_host_key: false
+  tags: {password_env: LAB_SSH_PASSWORD}
+hosts:
+  local:
+    hostname: 127.0.0.1
+    port: 22
+    groups: [local]
+  web-01:
+    hostname: web-01
+    groups: [web]
+    allowed_paths: ["/var/log/nginx", "/tmp", "/var/log/fill"]
+    allowed_services: ["nginx"]
+  web-02:
+    hostname: web-02
+    groups: [web]
+    allowed_paths: ["/var/log/nginx", "/tmp", "/var/log/fill"]
+    allowed_services: ["nginx"]
+  db-01:
+    hostname: db-01
+    groups: [db]
+    allowed_paths: ["/var/log", "/tmp"]
+    allowed_services: ["redis-server", "postgresql"]

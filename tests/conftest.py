@@ -1,4 +1,12 @@
+import sys
+from pathlib import Path
+
 import pytest
+
+# 让 `evals`（评测包）也能被导入：它不在安装的 wheel 里，而是仓库里的顶层包
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from server_agent.config import get_settings
 

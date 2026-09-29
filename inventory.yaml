@@ -1,0 +1,32 @@
+# 主机清单：Agent 能操作的机器、连接方式与授权范围。
+# 演示靶场（docker compose -f lab/docker-compose.yml up -d 后可用）。
+defaults:
+  username: root
+  port: 2222
+  strict_host_key: false      # 演练环境关掉 host key 校验；真机上请设为 true
+  tags:
+    password_env: LAB_SSH_PASSWORD
+
+hosts:
+  local:
+    hostname: 127.0.0.1
+    port: 22
+    groups: [local]
+  web-01:
+    hostname: 127.0.0.1
+    port: 2201
+    groups: [web]
+    allowed_paths: ["/var/log/nginx", "/tmp"]
+    allowed_services: ["nginx"]
+  web-02:
+    hostname: 127.0.0.1
+    port: 2202
+    groups: [web]
+    allowed_paths: ["/var/log/nginx", "/tmp"]
+    allowed_services: ["nginx"]
+  db-01:
+    hostname: 127.0.0.1
+    port: 2203
+    groups: [db]
+    allowed_paths: ["/var/log", "/tmp"]
+    allowed_services: ["redis-server", "postgresql"]

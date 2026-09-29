@@ -20,17 +20,14 @@
 | | 07 | 给 Agent 立规矩：Prompt 工程与结构化输出 | SRE 系统提示词、诊断报告 Schema | [已发布](docs/chapters/07-prompt-engineering.md) |
 | 三、可信 | 08 | 记性与注意力：上下文管理与记忆 | 输出截断/压缩、会话持久化、主机档案 | [已发布](docs/chapters/08-context-memory.md) |
 | | 09 | 刹车系统：安全、权限与人工审批 | 风险分级、审批流、审计、防注入 | [已发布](docs/chapters/09-safety-approval.md) |
-| | 10 | 伸向远方：SSH 远程执行与多主机 | 执行器抽象、主机清单、Docker 靶场 | 待发布 |
-| | 11 | 给 Agent 一间隔离的工作室：Agent 沙箱（AGS） | 沙箱执行器、`run_python`、高危操作预演 | 待发布 |
-| 四、进阶 | 12 | 先想后做：规划、反思与 Runbook | Plan-and-Execute、Runbook 引擎 | 待发布 |
-| | 13 | 让 Agent 读过你的文档：RAG 知识库 | 检索工具、引用溯源 | 待发布 |
-| | 14 | 工具的 USB 接口：MCP 协议 | MCP Server / Client | 待发布 |
-| 五、工程化 | 15 | 先有尺子：评估与可观测性 | 评测集、Trace、回归报告 | 待发布 |
-| | 16 | 一个不够就组队：多 Agent 协作 | 诊断/执行/审查三角色 | 待发布 |
-| | 17 | 总演习：故障靶场实战与交付部署 | 端到端排障、Docker 部署 | 待发布 |
-| 附录 | A | 框架对照：手写模块 vs LangGraph / OpenAI Agents SDK 等 | — | 待发布 |
-| | B | 术语表（中英对照） | — | 待发布 |
-| | C | Linux 排障命令速查 | — | 待发布 |
+| | 10 | 伸向远方：SSH 远程执行与多主机 | 执行器抽象、主机清单、Docker 靶场 | [已发布](docs/chapters/10-remote-executors.md) |
+| | 11 | 给 Agent 一间隔离的工作室：Agent 沙箱（AGS） | 沙箱执行器、`run_python`、高危操作预演 | [已发布](docs/chapters/11-agent-sandbox.md) |
+| 四、进阶 | 12 | 先想后做：规划、反思与 Runbook | Plan-and-Execute、Runbook 引擎 | [已发布](docs/chapters/12-planning-runbook.md) |
+| | 13 | 让 Agent 读过你的文档：RAG 知识库 | 检索工具、引用溯源 | [已发布](docs/chapters/13-rag.md) |
+| | 14 | 工具的 USB 接口：MCP 协议 | MCP Server / Client | [已发布](docs/chapters/14-mcp.md) |
+| 五、工程化 | 15 | 先有尺子：评估与可观测性 | 评测集、Trace、回归报告 | [已发布](docs/chapters/15-eval-observability.md) |
+| | 16 | 一个不够就组队：多 Agent 协作 | 诊断/执行/审查三角色 | [已发布](docs/chapters/16-multi-agent.md) |
+| | 17 | 总演习：故障靶场实战与交付部署 | 端到端排障、Docker 部署 | [已发布](docs/chapters/17-capstone-deploy.md) |
 
 ## 最终架构（第 17 章完成时）
 
@@ -122,7 +119,12 @@ server-agent ask --host web-01 "磁盘满了吗"   # 带上该主机的历史记
 server-agent history                          # 回看历史排查（SQLite，重启不丢）
 server-agent tools call restart_service '{"name": "nginx"}'   # 高危操作：必须人工审批
 server-agent audit                            # 审计日志：谁调了什么、批准还是拒绝
+server-agent ask --plan "为什么慢"             # 先出计划再执行
+server-agent ask --multi "磁盘满了并处理"       # 多 Agent：诊断→执行→审查
+server-agent eval --cases evals/cases         # 跑评测集（离线、可重复）
+server-agent mcp list --server "python -m server_agent.mcp.server"   # 暴露给 MCP 客户端
+make lab-up && make fault-disk                # 起靶场并注入故障（需要 Docker）
 SA_API_TOKEN=devtoken server-agent serve   # 启动服务：控制台 http://127.0.0.1:8000 ，接口见 docs/api.md
 ```
 
-模块文档：[config / cli / server 骨架](docs/modules/config.md) · [llm 调用层](docs/modules/llm.md) · [tools 工具层](docs/modules/tools.md) · [agent 循环](docs/modules/agent-loop.md) · [server 服务层](docs/modules/server.md) · [web 前端](docs/modules/web.md) · [prompts 提示词层](docs/modules/prompts.md) · [memory 记忆层](docs/modules/memory.md) · [policy 策略层](docs/modules/policy.md) · [HTTP/WS 接口](docs/api.md)
+模块文档：[config / cli / server 骨架](docs/modules/config.md) · [llm 调用层](docs/modules/llm.md) · [tools 工具层](docs/modules/tools.md) · [agent 循环](docs/modules/agent-loop.md) · [server 服务层](docs/modules/server.md) · [web 前端](docs/modules/web.md) · [prompts 提示词层](docs/modules/prompts.md) · [memory 记忆层](docs/modules/memory.md) · [executors 执行器](docs/modules/executors.md) · [sandbox 沙箱](docs/modules/sandbox.md) · [planner 规划](docs/modules/planner.md) · [knowledge 知识库](docs/modules/knowledge.md) · [mcp](docs/modules/mcp.md) · [tracing/evals](docs/modules/tracing.md) · [multi 多 Agent](docs/modules/multi-agent.md) · [policy 策略层](docs/modules/policy.md) · [HTTP/WS 接口](docs/api.md)

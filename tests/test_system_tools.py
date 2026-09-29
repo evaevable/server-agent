@@ -9,7 +9,9 @@ EXPECTED = {"host_info", "cpu_memory_usage", "disk_usage", "top_processes", "lis
 
 
 MEMORY_TOOLS = {"recall_host", "remember_fact"}
-HIGH_RISK_TOOLS = {"restart_service", "kill_process", "clean_directory"}
+LOW_RISK_TOOLS = {"run_python"}     # 沙箱执行：不改系统，隔离由沙箱保证
+HIGH_RISK_TOOLS = {"restart_service", "kill_process", "clean_directory",
+                   "remote_restart_service"}
 
 
 def test_all_six_tools_registered_readonly_and_schemas_valid():
@@ -20,6 +22,9 @@ def test_all_six_tools_registered_readonly_and_schemas_valid():
             continue
         if t.name in HIGH_RISK_TOOLS:
             assert t.risk == "high"            # 第 09 章：写操作必须走审批
+            continue
+        if t.name in LOW_RISK_TOOLS:
+            assert t.risk == "low"
             continue
         assert t.risk == "read"
         fn = t.schema()["function"]

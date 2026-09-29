@@ -1,0 +1,52 @@
+# 一键起「Agent 服务 + 三台靶机」。
+#
+#   export LAB_SSH_PASSWORD=labpass
+#   docker compose up -d --build
+#   浏览器打开 http://127.0.0.1:8000  （Token 填 .env 里的 SA_API_TOKEN，若设置了）
+#
+# 注意：Agent 容器要能 SSH 到靶机，所以共用同一个 docker 网络，hostname 用服务名（sa-web-01 等），
+# 靶机端口在容器网络里都是 22（对外映射到 2201/2202/2203 供宿主机调试）。
+services:
+  agent:
+    build: .
+    container_name: sa-agent
+    ports: ["8000:8000"]
+    environment:
+      SA_API_TOKEN: ${SA_API_TOKEN:-devtoken}
+      SA_HOST: 0.0.0.0
+      SA_DB_PATH: /app/data/server_agent.db
+      SA_AUDIT_PATH: /app/data/audit.jsonl
+      SA_TRACE_DIR: /app/data/traces
+      SA_INVENTORY_PATH: /app/inventory.docker.yaml
+      # 模型配置从宿主机环境透传（DeepSeek / 百炼 / vLLM 都行）
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+    volumes:
+      - ./data:/app/data
+      - ./inventory.docker.yaml:/app/inventory.docker.yaml:ro
+    depends_on: [web-01, db-01]
+
+  web-01: &labnode
+    build: ./lab
+    container_name: sa-web-01
+    hostname: web-01
+    environment:
+      ROOT_PASSWORD: ${LAB_SSH_PASSWORD:-labpass}
+    ports: ["2201:22"]
+    volumes: ["./lab/faults:/opt/faults:ro"]
+
+  web-02:
+    <<: *labnode
+    container_name: sa-web-02
+    hostname: web-02
+    ports: ["2202:22"]
+
+  db-01:
+    build: ./lab
+    container_name: sa-db-01
+    hostname: db-01
+    environment:
+      ROOT_PASSWORD: ${LAB_SSH_PASSWORD:-labpass}
+    ports: ["2203:22"]
+    volumes: ["./lab/faults:/opt/faults:ro"]

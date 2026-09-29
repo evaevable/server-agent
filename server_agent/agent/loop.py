@@ -24,6 +24,7 @@ from server_agent.agent.events import AgentResult, Event
 from server_agent.config import get_settings
 from server_agent.llm.base import LLMClient, LLMError, Message, ToolCall, Usage
 from server_agent.memory.context import ContextBudget, fit_messages
+from server_agent.tracing.trace import Trace, trace_dir_default
 from server_agent.prompts import (
     DiagnosticReport,
     parse_report,
@@ -59,6 +60,7 @@ class Agent:
         timeout: float | None = None,
         stream: bool = True,
         report: bool = True,
+        planning: bool | None = None,
         approver=None,
         policy=None,
         audit=None,
@@ -80,6 +82,9 @@ class Agent:
         self.approver = approver
         self.policy = policy
         self.audit = audit
+        self.planning = s.agent_planning if planning is None else planning
+        self.plan: "Plan | None" = None      # 第 12 章：Plan-and-Execute
+        self.trace: Trace | None = None      # 第 15 章：本次 run 的耗时树
         self.budget = ContextBudget(max_tokens=s.context_max_tokens,
                                     reserve_output=s.context_reserve_output,
                                     keep_recent_tool_msgs=s.context_keep_recent)
@@ -124,6 +129,9 @@ class Agent:
     async def run(self, user_input: str, *, history: list[Message] | None = None) -> AsyncIterator[Event]:
         run_id = f"run_{uuid.uuid4().hex[:12]}"
         started = self.clock()
+        if self.trace is None:      # 允许外部注入（测试、评测、自定义落盘）
+            self.trace = Trace(run_id, path=trace_dir_default())
+        run_span = self.trace.start_span("run", input=user_input[:120])
         buf: list[Event] = []  # 事件缓冲：辅助方法往里写，主循环负责 yield 出去
         seq = 0
 
@@ -136,14 +144,29 @@ class Agent:
             while buf:
                 yield buf.pop(0)
 
+        # 第 12 章：Plan-and-Execute。先生成计划（一次调用），把它写进提示词，
+        # 让后面的 ReAct 循环「按计划推进」而不是走到哪算哪。
+        plan_event = None
+        if self.planning:
+            from server_agent.agent.planner import Planner
+
+            planner = Planner(self.llm)
+            self.plan = await planner.make_plan(user_input)
+            if self.plan is not None:
+                self.system_prompt = self.system_prompt + "\n\n" + self.plan.render()
+                plan_event = {"plan": self.plan.to_dict()}
+
         messages: list[Message] = [Message.system(self.system_prompt)]
         if history:
             messages.extend(history)
         messages.append(Message.user(user_input))
 
+        if plan_event:
+            await emit("plan", plan_event)
         await emit("start", {"input": user_input, "max_steps": self.max_steps,
                              "tools": self.tools.names(), "model": getattr(self.llm, "model", None),
-                             "prompt_variant": self.prompt_variant})
+                             "prompt_variant": self.prompt_variant,
+                             "role": getattr(self, "role", None)})
         async for e in flush():
             yield e
 
@@ -170,7 +193,9 @@ class Agent:
                         yield e
                 step_messages = fitted + ([Message.user(MAX_STEPS_NOTE.format(n=self.max_steps))]
                                           if last else [])
-                assistant, finish_reason, text = await self._step(step_messages, emit)
+                async with self.trace.span("llm", step=step) as llm_span:
+                    assistant, finish_reason, text = await self._step(step_messages, emit)
+                llm_span.attrs["finish_reason"] = finish_reason
                 async for e in flush():
                     yield e
                 messages.append(assistant)
@@ -185,6 +210,12 @@ class Agent:
                     async for e in flush():
                         yield e
                     results = await self._run_tools(calls, seen_calls, emit, run_id)
+                    if self.plan is not None:
+                        # 工具成功就推进一格；整轮都失败则标记该步失败（允许模型自行重规划）
+                        if any(not r.startswith('{"error"') for r in results):
+                            self.plan.mark_next_done()
+                        else:
+                            self.plan.mark_last_failed()
                     for tc, result in zip(calls, results):
                         tool_call_count += 1
                         messages.append(Message.tool(tc.id, result))
@@ -221,7 +252,12 @@ class Agent:
                 yield e
             raise
 
+        with_report = self.trace.start_span("report") if self.trace else None
         report_obj, report_error = await self._build_report(messages, final_text, stopped)
+        if self.trace and with_report:
+            self.trace.end_span(with_report, parsed=report_obj is not None)
+        if self.trace:
+            self.trace.end_span(run_span, stopped=stopped)
         if self.report_enabled:
             data = {"parsed": report_obj is not None, "error": report_error,
                     "report": report_obj.model_dump() if report_obj else None,
@@ -235,7 +271,8 @@ class Agent:
                              report=report_obj.model_dump() if report_obj else None,
                              report_error=report_error)
         self.last_result = result  # 供 run_sync 等调用方取用（含完整消息历史）
-        await emit("end", {**result.to_dict(), "elapsed_ms": round((self.clock() - started) * 1000, 1)})
+        await emit("end", {**result.to_dict(), "elapsed_ms": round((self.clock() - started) * 1000, 1),
+                           "trace": self.trace.summary() if self.trace else None})
         async for e in flush():
             yield e
 
@@ -285,8 +322,16 @@ class Agent:
                 await emit("tool_result", {"id": tc.id, "name": tc.name, "ok": False, "content": msg,
                                            "chars": len(msg), "skipped": "bad_json"})
                 return msg
-            r = await self.tools.call(tc.name, args, policy=self.policy, approver=self.approver,
-                                      audit=self.audit, run_id=run_id)
+            if self.trace is not None:
+                async with self.trace.span(f"tool:{tc.name}", args=str(args)[:200]) as span:
+                    r = await self.tools.call(tc.name, args, policy=self.policy,
+                                              approver=self.approver, audit=self.audit,
+                                              run_id=run_id)
+                span.attrs["ok"] = r.ok
+            else:
+                r = await self.tools.call(tc.name, args, policy=self.policy,
+                                          approver=self.approver, audit=self.audit,
+                                          run_id=run_id)
             await emit("tool_result", {"id": tc.id, "name": tc.name, "ok": r.ok, "content": r.content,
                                        "chars": len(r.content), "truncated": r.truncated,
                                        "elapsed_ms": r.elapsed_ms})

@@ -43,6 +43,28 @@ class Settings(BaseSettings):
                                            validation_alias=AliasChoices("LLM_EXTRA_BODY", "SA_LLM_EXTRA_BODY"),
                                            description='JSON，合并进请求体的厂商私有参数，如 {"thinking":{"type":"disabled"}}')
 
+    # ---- 第 15 章：可观测与评测 ----
+    trace_enabled: bool = Field(True, description="是否记录 Trace（耗时树）")
+    trace_dir: str = Field("data/traces", description="Trace 落盘目录（JSONL）")
+    evals_dir: str = Field("evals", description="评测用例目录")
+
+    # ---- 第 13 章：知识库 ----
+    knowledge_dir: str = Field("knowledge", description="文档目录（RAG 索引源）")
+
+    # ---- 第 12 章：规划与 Runbook ----
+    agent_planning: bool = Field(False, description="是否启用 Plan-and-Execute（先出计划再执行）")
+    runbooks_dir: str = Field("runbooks", description="Runbook 手册目录")
+
+    # ---- 第 11 章：沙箱 ----
+    sandbox_enabled: bool = Field(True, description="是否允许 Agent 在沙箱里执行自己写的代码")
+    sandbox_backend: str = Field("auto", description="auto | local_docker | ags")
+    sandbox_timeout: float = Field(30.0, gt=0, le=600, description="单次沙箱执行超时（秒）")
+    sandbox_image: str = Field("python:3.12-slim", description="本地 Docker 沙箱镜像")
+
+    # ---- 第 10 章：多主机 ----
+    inventory_path: str = Field("inventory.yaml", description="主机清单路径（不存在则只用本机）")
+    ssh_connect_timeout: float = Field(10.0, gt=0, description="SSH 连接超时（秒）")
+
     # ---- 第 09 章：安全策略 ----
     policy_allow_paths: list[str] = Field(default_factory=lambda: ["/tmp", "/var/tmp"],
                                           description="clean_directory 允许的路径前缀（白名单）")

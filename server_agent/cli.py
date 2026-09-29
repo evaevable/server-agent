@@ -223,7 +223,8 @@ async def _ask(args: argparse.Namespace) -> int:
 
     agent = Agent(llm, system_prompt=args.system, prompt_variant=args.variant,
                   max_steps=args.max_steps, timeout=args.timeout, stream=not args.no_stream,
-                  report=not args.no_report, approver=approver, policy=policy, audit=audit)
+                  report=not args.no_report, approver=approver, policy=policy, audit=audit,
+                  planning=args.plan if args.plan else None)
 
     # 第 08 章：记忆。开跑前先把历史结论注入系统提示词，跑完把本次过程落库。
     store = None
@@ -239,6 +240,32 @@ async def _ask(args: argparse.Namespace) -> int:
                 print(f"[记忆] 已注入历史记忆（{len(memory_note)} 字符），可用 --no-memory 关闭",
                       file=sys.stderr)
         recorder = Recorder(store, pending_run_id="", user_input=args.question)
+    if args.multi:
+        from server_agent.multi import Supervisor
+        from server_agent.tools import registry as base_registry
+
+        sup = Supervisor({"diagnostician": llm, "executor": llm, "reviewer": llm}, base_registry,
+                         policy=policy, audit=audit, approver=approver,
+                         max_steps=args.max_steps or 8)
+        try:
+            outcome = await sup.run(args.question)      # 已经在事件循环里，直接 await
+        finally:
+            if hasattr(llm, "aclose"):
+                await llm.aclose()
+        if args.json:
+            print(json.dumps(outcome.to_dict(), ensure_ascii=False, indent=2))
+            return 0
+        for role in outcome.roles:
+            print(f"\n=== {role.role}（{role.steps} 步 / {role.tool_calls} 次工具 / {role.tokens} token）===")
+            print(role.text[:1500] or "（无输出）")
+        if outcome.verdict:
+            print(f"\n[审查] {outcome.verdict['verdict']}")
+            for issue in outcome.verdict.get("issues", []):
+                print(f"  - 问题：{issue}")
+            for sug in outcome.verdict.get("suggestions", []):
+                print(f"  - 建议：{sug}")
+        return 0
+
     events: list[dict] = []
     rc = 0
     try:
@@ -326,6 +353,12 @@ def _render(ev, *, verbose: bool, quiet: bool) -> None:
             print(f"  [{mark}] {d['name']}{extra}{ms}，{d['chars']} 字符{cut}", file=sys.stderr)
             if verbose:
                 print("    " + _snippet(d["content"], 400), file=sys.stderr)
+    elif ev.type == "plan":
+        if not quiet:
+            p = d["plan"]
+            print("\n[计划] " + (p.get("rationale") or ""), file=sys.stderr)
+            for i, st in enumerate(p["steps"], 1):
+                print(f"  {i}. {st['goal']}", file=sys.stderr)
     elif ev.type == "report":
         if not d["parsed"]:
             print(f"\n  [报告] 未能解析为结构化报告：{d.get('error')}", file=sys.stderr)
@@ -415,6 +448,72 @@ def _cmd_audit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    """MCP 子命令：serve（把工具暴露出去）/ list / call（连外部 MCP Server）。"""
+    import asyncio
+
+    if args.mcp_cmd == "serve":
+        from server_agent.mcp.server import main as serve
+
+        return serve(["--expose-write"] if args.expose_write else [])
+
+    from server_agent.mcp.client import MCPClient, MCPClientError
+
+    async def run() -> int:
+        client = MCPClient(args.server, timeout=args.timeout)
+        try:
+            info = await client.start()
+            server_info = info.get("serverInfo") or {}
+            print(f"已连接：{server_info.get('name')} {server_info.get('version')}"
+                  f"（协议 {info.get('protocolVersion')}）", file=sys.stderr)
+            tools = await client.list_tools()
+            if args.mcp_cmd == "list":
+                for t in tools:
+                    print(f"{t.name:<24} {t.description.splitlines()[0][:70] if t.description else ''}")
+                print(f"\n共 {len(tools)} 个工具", file=sys.stderr)
+                return 0
+            target = next((t for t in tools if t.name == args.tool), None)
+            if target is None:
+                print(f"[error] 对方没有这个工具: {args.tool}（可用：{[t.name for t in tools]}）", file=sys.stderr)
+                return 1
+            result = await client.call_tool(args.tool, json.loads(args.args))
+            print(result["text"])
+            return 1 if result["is_error"] else 0
+        except MCPClientError as e:
+            print(f"[error] {e}", file=sys.stderr)
+            return 1
+        finally:
+            await client.close()
+
+    return asyncio.run(run())
+
+
+def _cmd_eval(args: argparse.Namespace) -> int:
+    """跑评测集：离线、可重复，输出 Markdown 报告。"""
+    import asyncio
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # 让 evals 可导入
+
+    from evals.runner import load_cases, render_report, run_all
+
+    cases = load_cases(args.cases)
+    if not cases:
+        print(f"[error] 没有找到用例：{args.cases}", file=sys.stderr)
+        return 1
+    results = asyncio.run(run_all(cases, approve_write=args.approve_write))
+    report = render_report(results, title=f"评测报告（{args.cases}）")
+    print(report)
+    if args.out:
+        from pathlib import Path as _P
+
+        _P(args.out).write_text(report, encoding="utf-8")
+        print(f"报告已写入 {args.out}", file=sys.stderr)
+    failed = [r for r in results if not r.passed]
+    return 1 if failed and args.strict else 0
+
+
 CHAT_SYSTEM = "你是一名资深 Linux 运维工程师，回答简洁、给出可执行的命令。"
 
 
@@ -461,6 +560,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-memory", action="store_true", help="跳过历史记忆注入")
     ap.add_argument("--yes", action="store_true", help="高危操作自动批准（仅用于演示/测试）")
     ap.add_argument("--no-approval", action="store_true", help="所有需要审批的操作直接拒绝（默认行为是交互式询问）")
+    ap.add_argument("--plan", action="store_true", help="启用 Plan-and-Execute（先生成计划再执行）")
+    ap.add_argument("--multi", action="store_true", help="启用多 Agent 协作（诊断→执行→审查）")
     ap.add_argument("--json", action="store_true", help="输出完整事件流 JSON（供脚本/前端使用）")
     ap.add_argument("-q", "--quiet", action="store_true", help="只输出最终答案")
     ap.add_argument("-v", "--verbose", action="store_true", help="显示思考内容与工具结果片段")
@@ -477,6 +578,30 @@ def build_parser() -> argparse.ArgumentParser:
     au.add_argument("--memory", action="store_true", help="只看内存缓冲（默认从磁盘 JSONL 读取）")
     au.add_argument("-v", "--verbose", action="store_true", help="显示 detail 字段")
     au.set_defaults(func=_cmd_audit)
+
+    ev = sub.add_parser("eval", help="跑评测集（离线、可重复，输出 Markdown 报告）")
+    ev.add_argument("--cases", default="evals/cases", help="用例目录或单个 YAML 文件")
+    ev.add_argument("--out", default=None, help="把报告写到文件")
+    ev.add_argument("--approve-write", action="store_true",
+                    help="对标记了 approve_write 的用例自动批准写操作（用来看「批准后会发生什么」）")
+    ev.add_argument("--strict", action="store_true", help="有失败用例时返回退出码 1")
+    ev.set_defaults(func=_cmd_eval)
+
+    mp = sub.add_parser("mcp", help="MCP 协议：暴露我们的工具 / 连接外部 MCP Server")
+    msub = mp.add_subparsers(dest="mcp_cmd", required=True)
+    ms = msub.add_parser("serve", help="以 MCP Server 身份在 stdio 上服务（给 MCP 客户端用）")
+    ms.add_argument("--expose-write", action="store_true", help="也暴露写操作工具（仍会走审批/拒绝）")
+    ms.set_defaults(func=_cmd_mcp)
+    ml = msub.add_parser("list", help="连接外部 MCP Server 并列出它的工具")
+    ml.add_argument("--server", required=True, help='启动命令，如 "python -m server_agent.mcp.server"')
+    ml.add_argument("--timeout", type=float, default=20.0)
+    ml.set_defaults(func=_cmd_mcp)
+    mc = msub.add_parser("call", help="调用外部 MCP Server 的一个工具")
+    mc.add_argument("tool")
+    mc.add_argument("args", nargs="?", default="{}")
+    mc.add_argument("--server", required=True)
+    mc.add_argument("--timeout", type=float, default=20.0)
+    mc.set_defaults(func=_cmd_mcp)
     return p
 
 

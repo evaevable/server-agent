@@ -26,7 +26,7 @@ def test_tools_list_and_schema(capsys):
     assert main(["tools", "list", "--schema"]) == 0
     schemas = json.loads(capsys.readouterr().out)
     names = {s["function"]["name"] for s in schemas}
-    assert len(schemas) == 12 and schemas[0]["type"] == "function"
+    assert len(schemas) >= 18 and schemas[0]["type"] == "function"
     assert {"disk_usage", "recall_host", "remember_fact"} <= names
 
 
@@ -258,3 +258,32 @@ def test_tools_call_goes_through_policy(capsys, monkeypatch, tmp_path):
         assert "hostname" in capsys.readouterr().out
     finally:
         reset_audit()
+
+
+def test_ask_multi_mock_runs(capsys):
+    """--multi 至少要能跑通（用 echo MockLLM：三段角色输出 + 裁决 unknown）。"""
+    assert main(["ask", "--multi", "--mock", "查一下磁盘"]) == 0
+    out = capsys.readouterr().out
+    assert "=== diagnostician" in out and "=== reviewer" in out
+    assert "[审查]" in out
+
+
+def test_ask_multi_json_output(capsys):
+    assert main(["ask", "--multi", "--mock", "--json", "查一下"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["roles"] and payload["verdict"]["verdict"] in ("unknown", "ok", "suspect")
+    assert payload["tokens"] >= 0
+
+
+def test_eval_command(capsys):
+    assert main(["eval", "--cases", "evals/cases"]) == 0
+    out = capsys.readouterr().out
+    assert "用例数" in out and "通过率" in out
+
+
+def test_mcp_list_command(capsys):
+    import sys as _sys
+
+    assert main(["mcp", "list", "--server", f"{_sys.executable} -m server_agent.mcp.server"]) == 0
+    out = capsys.readouterr().out
+    assert "host_info" in out and "restart_service" not in out

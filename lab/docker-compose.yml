@@ -1,0 +1,31 @@
+# 靶场：三台「服务器」容器，都带 sshd，供 Agent 实操。
+# 用法：
+#   cd lab && docker compose up -d --build
+#   导出密码：export LAB_SSH_PASSWORD=labpass
+#   server-agent ask "web-01 怎么了"
+services:
+  web-01: &webnode
+    build: .
+    container_name: sa-web-01
+    hostname: web-01
+    ports: ["2201:22"]
+    environment:
+      ROOT_PASSWORD: labpass
+    volumes:
+      - ./faults:/opt/faults:ro
+
+  web-02:
+    <<: *webnode
+    container_name: sa-web-02
+    hostname: web-02
+    ports: ["2202:22"]
+
+  db-01:
+    build: .
+    container_name: sa-db-01
+    hostname: db-01
+    ports: ["2203:22"]
+    environment:
+      ROOT_PASSWORD: labpass
+    volumes:
+      - ./faults:/opt/faults:ro
