@@ -29,6 +29,12 @@ ALLOWED_COMMANDS = {"uptime", "df", "du", "free", "ps", "ss", "netstat", "journa
 FORBIDDEN_COMMANDS = {"rm", "rmdir", "dd", "mkfs", "shutdown", "reboot", "halt", "chmod",
                       "chown", "sudo", "su", "kill", "killall", "pkill", "mv", "useradd",
                       "userdel", "passwd", "iptables", "mount", "umount", "tee", "curl", "wget"}
+# 读文件类工具（tail_file）永远不许碰的路径：凭证、私钥、进程环境变量
+SENSITIVE_FILES = ("/etc/shadow", "/etc/gshadow", "/etc/sudoers", "/etc/master.passwd")
+SENSITIVE_DIRS = ("/etc/ssl/private", "/root/.ssh", "/proc", "/sys")
+SENSITIVE_NAMES = (".env", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "authorized_keys",
+                   ".pgpass", ".netrc", ".git-credentials", "credentials")
+SENSITIVE_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".kdbx")
 SHELL_METACHARS = (";", "|", "&", ">", "<", "`", "$(", "\n", "\\")
 
 
@@ -117,6 +123,14 @@ class Policy:
             return PolicyDecision(False, reason=f"只允许温和信号 TERM/INT/HUP，收到: {sig}")
         return PolicyDecision(True, reason=f"将向 pid={pid} 发送 {sig}，需人工确认")
 
+    def _check_tail_file(self, args: dict) -> PolicyDecision:
+        """只读工具也要校验参数：日志之外的敏感文件（凭证、私钥）一律不读。"""
+        raw = str(args.get("path", ""))
+        reason = sensitive_path_reason(raw, self._norm(raw))
+        if reason:
+            return PolicyDecision(False, reason=reason)
+        return PolicyDecision(True, reason="只读")
+
     def _check_run_command(self, args: dict) -> PolicyDecision:
         cmd = str(args.get("command", "")).strip()
         if not cmd:
@@ -136,3 +150,38 @@ class Policy:
         if head not in ALLOWED_COMMANDS:
             return PolicyDecision(False, reason=f"命令 {head} 不在白名单内（允许：{', '.join(sorted(ALLOWED_COMMANDS))}）")
         return PolicyDecision(True, needs_approval=False, reason=f"命令 {head} 属于只读白名单")
+
+
+def sensitive_path_reason(raw: str, resolved: Path) -> str | None:
+    """路径是否指向凭证/私钥等敏感文件。raw 与 resolved 都检查：防止用符号链接或 .. 绕过。"""
+    import posixpath
+
+    texts = {posixpath.normpath(raw) if raw else raw, str(resolved)}
+    texts |= {t[len("/private"):] for t in texts if t.startswith("/private/")}   # macOS: /etc -> /private/etc
+    for text in texts:
+        candidate = Path(text)
+        name = candidate.name.lower()
+        if text in SENSITIVE_FILES:
+            return f"拒绝读取敏感文件: {text}"
+        if any(text == d or text.startswith(d + "/") for d in SENSITIVE_DIRS):
+            return f"拒绝读取敏感目录下的文件: {text}"
+        if "/.ssh/" in text or "/.gnupg/" in text or "/.aws/" in text or "/.kube/" in text:
+            return f"拒绝读取凭证目录下的文件: {text}"
+        if name in SENSITIVE_NAMES or name.startswith(".env.") or name.endswith(SENSITIVE_SUFFIXES):
+            return f"拒绝读取可能含凭证或私钥的文件: {text}"
+    return None
+
+
+def path_within(path: str, allowed: tuple[str, ...] | list[str]) -> bool:
+    """POSIX 路径白名单判断（用于远端路径，不能 resolve 本机文件系统）：
+    先 normpath 消掉 .. 与重复斜杠，再按目录边界比较（/var/log 不匹配 /var/logfoo）。"""
+    import posixpath
+
+    if not path.startswith("/") or "\x00" in path:
+        return False
+    norm = posixpath.normpath(path)
+    for base in allowed:
+        b = posixpath.normpath(base)
+        if norm == b or norm.startswith(b.rstrip("/") + "/"):
+            return True
+    return False

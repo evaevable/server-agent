@@ -9,6 +9,8 @@
 
 from __future__ import annotations
 
+import posixpath
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field
@@ -17,6 +19,7 @@ from server_agent.executors import get_executor
 from server_agent.executors.base import ExecutorError
 from server_agent.executors.inventory import get_inventory
 from server_agent.policy.redact import redact
+from server_agent.policy.risk import path_within, sensitive_path_reason
 from server_agent.tools.registry import ToolError, tool
 
 REMOTE_READONLY = {"uptime", "df", "du", "free", "ps", "ss", "netstat", "journalctl",
@@ -117,9 +120,12 @@ async def remote_logs(
 ) -> dict:
     """读取**远程主机**上的日志文件末尾若干行（相当于远端 tail，可选 grep 过滤）。
     会用该主机清单里的 allowed_paths 做白名单校验，防止读到任意文件。"""
+    reason = sensitive_path_reason(path, Path(posixpath.normpath(path)))
+    if reason:
+        raise ToolError(reason)
     inventory_host = get_inventory().get(host)
     if inventory_host and inventory_host.allowed_paths:
-        if not any(path.startswith(p) for p in inventory_host.allowed_paths):
+        if not path_within(path, inventory_host.allowed_paths):   # normpath + 目录边界，防 .. 穿越
             raise ToolError(f"{host} 的日志白名单不含该路径（允许：{', '.join(inventory_host.allowed_paths)}）")
     cmd = ["tail", "-n", str(lines), path]
     try:

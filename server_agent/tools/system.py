@@ -237,6 +237,11 @@ def tail_file(
     p = Path(path)
     if not p.is_absolute():
         raise ToolError(f"必须使用绝对路径: {path}")
+    from server_agent.policy.risk import sensitive_path_reason
+
+    reason = sensitive_path_reason(path, Path(path).resolve())
+    if reason:                                        # 工具内再拦一次：即使调用方没挂策略层
+        raise ToolError(reason)
     if not p.exists():
         raise ToolError(f"文件不存在: {path}")
     if p.is_dir():
@@ -254,10 +259,12 @@ def tail_file(
         g = grep.lower()
         text_lines = [ln for ln in text_lines if g in ln.lower()]
     picked = text_lines[-lines:]
+    from server_agent.policy.redact import redact
+
     return {
         "path": str(p),
         "size": human(size),
         "modified": datetime.fromtimestamp(p.stat().st_mtime).isoformat(timespec="seconds"),
         "lines_returned": len(picked),
-        "content": "\n".join(picked),
+        "content": redact("\n".join(picked)),         # 日志里常混着 token / 连接串
     }

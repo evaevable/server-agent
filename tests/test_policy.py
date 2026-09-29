@@ -341,3 +341,53 @@ async def test_injection_payload_in_tool_output_does_not_execute(policy, monkeyp
                                 ("restart_service", {"name": "ssh", "dry_run": False})):
             r = await registry.call(tool_name, args, policy=policy, approver=approver, audit=AuditLog(None))
             assert not r.ok, f"{payload} -> {tool_name} 竟然通过"
+
+
+# ---------- 读文件类工具也不能读凭证（tail_file / remote_logs） ----------
+
+@pytest.mark.parametrize("path", [
+    "/etc/shadow", "/root/.ssh/id_rsa", "/home/app/.ssh/authorized_keys", "/srv/app/.env",
+    "/srv/app/.env.production", "/etc/nginx/ssl/site.key", "/proc/1/environ", "/home/u/.aws/credentials",
+    "/var/log/../../etc/shadow",
+])
+def test_tail_file_refuses_sensitive_paths(path):
+    from server_agent.policy.risk import Policy
+
+    decision = Policy().decide("tail_file", {"path": path}, risk="read")
+    assert not decision.allowed and "拒绝读取" in decision.reason
+
+
+async def test_tail_file_tool_blocks_even_without_policy(tmp_path):
+    from server_agent.tools import registry
+
+    secret = tmp_path / "deploy.pem"
+    secret.write_text("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n")
+    r = await registry.call("tail_file", {"path": str(secret)})
+    assert not r.ok and "私钥" in r.error
+
+    link = tmp_path / "innocent.log"
+    link.symlink_to(secret)                       # 用符号链接伪装成日志
+    r = await registry.call("tail_file", {"path": str(link)})
+    assert not r.ok and "私钥" in r.error
+
+
+async def test_tail_file_redacts_secrets_in_logs(tmp_path):
+    from server_agent.tools import registry
+
+    log = tmp_path / "app.log"
+    log.write_text("start\nconnect redis://:hunter2@10.0.0.5:6379/0\napi_key=sk-abcdefghijklmnop\n")
+    r = await registry.call("tail_file", {"path": str(log)})
+    assert r.ok and "hunter2" not in r.content and "sk-abcdefghijklmnop" not in r.content
+
+
+@pytest.mark.parametrize("path,ok", [
+    ("/var/log/nginx/error.log", True),
+    ("/var/log", True),
+    ("/var/log/../../etc/passwd", False),     # .. 穿越
+    ("/var/logfoo/x.log", False),              # 前缀相同但不是子目录
+    ("var/log/a.log", False),                  # 相对路径
+])
+def test_path_within_for_remote_paths(path, ok):
+    from server_agent.policy.risk import path_within
+
+    assert path_within(path, ["/var/log"]) is ok

@@ -161,7 +161,13 @@ async def test_remote_logs_enforces_host_path_whitelist(inventory, monkeypatch):
     assert r.ok and "boom" in r.data["content"] and r.data["lines_returned"] == 1
 
     r = await registry.call("remote_logs", {"host": "web-01", "path": "/etc/shadow"})
+    assert not r.ok and "拒绝读取敏感文件" in r.error          # 敏感文件先于白名单被拦
+
+    r = await registry.call("remote_logs", {"host": "web-01", "path": "/etc/nginx/nginx.conf"})
     assert not r.ok and "白名单" in r.error
+
+    r = await registry.call("remote_logs", {"host": "web-01", "path": "/var/log/../../etc/passwd"})
+    assert not r.ok and "白名单" in r.error and len(fake.calls) == 1   # .. 穿越被拦，未下发到远端
 
 
 async def test_remote_restart_requires_host_authorization_and_approval(inventory, monkeypatch):
