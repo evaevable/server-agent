@@ -43,6 +43,10 @@ class Settings(BaseSettings):
                                            validation_alias=AliasChoices("LLM_EXTRA_BODY", "SA_LLM_EXTRA_BODY"),
                                            description='JSON，合并进请求体的厂商私有参数，如 {"thinking":{"type":"disabled"}}')
 
+    # ---- 第 07 章：提示词与结构化报告 ----
+    prompt_variant: str = Field("sre", description="提示词变体：sre（带排障方法论）或 plain（对照用）")
+    report_repair: bool = Field(True, description="报告解析失败时，追加一次「改写为 JSON」的请求")
+
     # ---- 第 06 章：前端 ----
     web_dir: str | None = Field(None, description="前端静态目录；默认取仓库根目录下的 web/")
 
@@ -61,6 +65,16 @@ class Settings(BaseSettings):
         v = v.lower()
         if v not in {"debug", "info", "warning", "error"}:
             raise ValueError(f"不支持的日志级别: {v}")
+        return v
+
+    @field_validator("prompt_variant")
+    @classmethod
+    def _check_variant(cls, v: str) -> str:
+        from server_agent.prompts import VARIANTS
+
+        v = (v or "sre").lower()
+        if v not in VARIANTS:
+            raise ValueError(f"未知的提示词变体: {v}（可用：{', '.join(VARIANTS)}）")
         return v
 
     @field_validator("web_dir", mode="before")

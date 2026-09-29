@@ -37,8 +37,9 @@ agent.last_result                                              # 同 result，�
 | `text` | `text`（增量） |
 | `tool_call` | `id` `name` `arguments` |
 | `tool_result` | `id` `name` `ok` `content` `chars` `truncated` `elapsed_ms` `skipped`（`repeat` / `bad_json` / `null`） |
+| `report` | `parsed` `report` `error` `raw`（第 07 章的结构化报告） |
 | `error` | `message` `status` `retryable` |
-| `end` | `text` `steps` `tool_calls` `usage` `stopped` `elapsed_ms` |
+| `end` | `text` `steps` `tool_calls` `usage` `stopped` `elapsed_ms` `report` `report_error` |
 
 `stopped` 取值：`final`（正常给出结论）、`max_steps`、`timeout`、`length`（输出被截断）、`error`、`cancelled`。
 

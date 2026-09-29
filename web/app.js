@@ -8,6 +8,7 @@ const state = {
   es: null,          // 当前 EventSource
   lastSeq: 0,        // 已收到的事件序号，断线重连时用于续传
   textNode: null,    // 正在流式追加的文本节点
+  suppress: false,   // 当前这轮回答看起来是 JSON（结构化报告），不再逐字渲染
   cards: {},         // tool_call id -> 卡片元素
   busy: false,
 };
@@ -63,12 +64,22 @@ function addUserBubble(text) {
 
 function addStep(n) {
   state.textNode = null;
+  state.suppress = false;   // 新步骤：重置「正在输出 JSON」标记
   $("timeline").append(el("div", "step-line", "第 " + n + " 步"));
   scrollToBottom();
 }
 
 /* 流式文本：同一段回答追加到同一个气泡，遇到新步骤则另起一个 */
 function appendText(text, final = false) {
+  // 结构化报告是一整块 JSON，逐字塞进气泡只是噪音；识别出来就不再渲染（交给报告卡片）
+  if (state.suppress) return;
+  if (!state.textNode && text.trimStart().startsWith("{")) {
+    state.suppress = true;
+    const bubble = el("div", "bubble");
+    bubble.append(el("div", "body", "正在生成结构化报告…"));
+    $("timeline").append(bubble);
+    return;
+  }
   if (!state.textNode) {
     const bubble = el("div", "bubble" + (final ? " final" : ""));
     const body = el("div", "body");
@@ -117,6 +128,40 @@ function finishToolCard(id, data) {
   scrollToBottom();
 }
 
+function reportCard(data) {
+  const card = el("div", "bubble");
+  const body = el("div", "body");
+  body.style.borderColor = data.parsed ? "#bfe6d8" : "var(--warn)";
+  if (!data.parsed) {
+    body.textContent = "结论未能解析为结构化报告：" + (data.error || "未知原因") + "\n" + (data.raw || "");
+    card.append(body);
+    $("timeline").append(card);
+    scrollToBottom();
+    return;
+  }
+  const r = data.report;
+  const head = el("div", "stats", "诊断报告 · " + r.severity + " · 置信度 " + r.confidence);
+  body.append(head);
+  body.append(el("div", null, "现象：" + r.summary));
+  if (r.root_cause) body.append(el("div", null, "根因：" + r.root_cause));
+  if (r.findings && r.findings.length) {
+    body.append(el("div", "stats", "观察与依据"));
+    r.findings.forEach((f) => body.append(el("div", null, "· " + f.claim + "（" + f.evidence + "）")));
+  }
+  if (r.actions && r.actions.length) {
+    body.append(el("div", "stats", "建议动作"));
+    r.actions.forEach((a) => {
+      body.append(el("div", null, "· [" + a.risk + "] " + a.description + (a.command ? "  → " + a.command : "")));
+    });
+  }
+  if (r.data_gaps && r.data_gaps.length) {
+    body.append(el("div", "stats", "还缺信息：" + r.data_gaps.join("；")));
+  }
+  card.append(body);
+  $("timeline").append(card);
+  scrollToBottom();
+}
+
 function addError(message) {
   const wrap = el("div", "bubble");
   const body = el("div", "body");
@@ -150,6 +195,8 @@ function handleEvent(ev) {
     toolCard(d.id, d.name, d.arguments);
   } else if (ev.type === "tool_result") {
     finishToolCard(d.id, d);
+  } else if (ev.type === "report") {
+    reportCard(d);
   } else if (ev.type === "error") {
     addError(d.message);
   } else if (ev.type === "end") {
@@ -162,7 +209,8 @@ function handleEvent(ev) {
 }
 
 /* ---------- SSE 订阅 ---------- */
-const EVENT_TYPES = ["start", "step", "reasoning", "text", "tool_call", "tool_result", "error", "end"];
+const EVENT_TYPES = ["start", "step", "reasoning", "text", "tool_call", "tool_result",
+  "report", "error", "end"];
 
 function subscribe(runId, afterSeq = 0) {
   unsubscribe();

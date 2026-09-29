@@ -69,8 +69,15 @@ event: tool_call
 data: {"id": "call_1", "name": "disk_usage", "arguments": "{\"path\": \"/\"}"}
 
 id: 12
+event: report
+data: {"parsed": true, "report": {"summary": "根分区使用率 92%", "severity": "critical",
+       "root_cause": "/var/log 未轮转", "confidence": "medium", "actions": [...], "data_gaps": [...]},
+       "error": null, "raw": null}
+
+id: 13
 event: end
-data: {"text": "根分区 92%……", "steps": 3, "tool_calls": 2, "stopped": "final", "usage": {...}}
+data: {"text": "根分区 92%……", "steps": 3, "tool_calls": 2, "stopped": "final", "usage": {...},
+       "report": {...}, "report_error": null}
 ```
 
 事件类型与字段见 [模块文档 agent-loop](modules/agent-loop.md#接口)。
@@ -86,7 +93,8 @@ data: {"text": "根分区 92%……", "steps": 3, "tool_calls": 2, "stopped": "f
 
 服务端 -> 客户端
   {"type": "ready", "tools": ["host_info", ...]}  连接建立后立即发送
-  {"type": "start" | "step" | "text" | "tool_call" | "tool_result" | "end", "run_id": ..., "seq": ..., "data": {...}}
+  {"type": "start" | "step" | "text" | "tool_call" | "tool_result" | "report" | "end",
+   "run_id": ..., "seq": ..., "data": {...}}
 ```
 
 ## Python 客户端示例

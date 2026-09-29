@@ -17,7 +17,7 @@
 | | 04 | Agent 的心跳：ReAct 循环 | Agent Loop、事件模型、`ask` 命令 | [已发布](docs/chapters/04-react-loop.md) |
 | 二、产品化 | 05 | 走出终端：HTTP API、SSE 与 WebSocket | 后端服务、事件流协议、鉴权 | [已发布](docs/chapters/05-api-streaming.md) |
 | | 06 | 看得见的思考：前端交互界面 | Web 控制台、时间线、中断 | [已发布](docs/chapters/06-web-ui.md) |
-| | 07 | 给 Agent 立规矩：Prompt 工程与结构化输出 | SRE 系统提示词、诊断报告 Schema | 待发布 |
+| | 07 | 给 Agent 立规矩：Prompt 工程与结构化输出 | SRE 系统提示词、诊断报告 Schema | [已发布](docs/chapters/07-prompt-engineering.md) |
 | 三、可信 | 08 | 记性与注意力：上下文管理与记忆 | 输出截断/压缩、会话持久化、主机档案 | 待发布 |
 | | 09 | 刹车系统：安全、权限与人工审批 | 风险分级、审批流、审计、防注入 | 待发布 |
 | | 10 | 伸向远方：SSH 远程执行与多主机 | 执行器抽象、主机清单、Docker 靶场 | 待发布 |
@@ -117,7 +117,8 @@ server-agent chat --mock    # 无需 API Key 体验对话；填好 .env 里的 L
 server-agent tools list     # 查看 6 个只读排障工具
 server-agent tools call disk_usage '{"path": "/"}'
 server-agent ask "这台机器为什么卡"   # 让 Agent 自己多步排查（需先配置 .env）
+server-agent ask --variant plain "这台机器为什么卡"   # 对照组：不带方法论的提示词
 SA_API_TOKEN=devtoken server-agent serve   # 启动服务：控制台 http://127.0.0.1:8000 ，接口见 docs/api.md
 ```
 
-模块文档：[config / cli / server 骨架](docs/modules/config.md) · [llm 调用层](docs/modules/llm.md) · [tools 工具层](docs/modules/tools.md) · [agent 循环](docs/modules/agent-loop.md) · [server 服务层](docs/modules/server.md) · [web 前端](docs/modules/web.md) · [HTTP/WS 接口](docs/api.md)
+模块文档：[config / cli / server 骨架](docs/modules/config.md) · [llm 调用层](docs/modules/llm.md) · [tools 工具层](docs/modules/tools.md) · [agent 循环](docs/modules/agent-loop.md) · [server 服务层](docs/modules/server.md) · [web 前端](docs/modules/web.md) · [prompts 提示词层](docs/modules/prompts.md) · [HTTP/WS 接口](docs/api.md)

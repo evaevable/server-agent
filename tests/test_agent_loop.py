@@ -52,7 +52,8 @@ async def test_two_step_run_feeds_tool_result_back():
     types = [e.type for e in events]
     # 文本事件可能被拆成多片（流式逐字），先折叠连续的 text
     collapsed = [t for i, t in enumerate(types) if t != "text" or (i == 0 or types[i - 1] != "text")]
-    assert collapsed == ["start", "step", "tool_call", "tool_result", "step", "text", "end"]
+    assert collapsed == ["start", "step", "tool_call", "tool_result", "step", "text", "report", "end"]
+    assert events[-2].data["parsed"] is False   # 本轮结论不是 JSON，报告解析失败（第 07 章）
     assert "".join(e.data["text"] for e in events if e.type == "text") == "根分区 97%，建议清理 /var/log"
     assert events[0].data["tools"] == ["disk_usage", "top_processes"]
     end = events[-1].data
@@ -62,8 +63,9 @@ async def test_two_step_run_feeds_tool_result_back():
     second = llm.calls[1]["messages"]
     assert [m.role for m in second] == ["system", "user", "assistant", "tool"]
     assert json.loads(second[-1].content)["percent"] == 97 and second[-1].tool_call_id == "call_1"
-    # 每次请求都带上了工具 Schema
-    assert all(len(c["tools"]) == 2 for c in llm.calls)
+    # 排查阶段的每次请求都带上了工具 Schema；最后的「改写为 JSON」请求不需要工具
+    assert all(len(c["tools"]) == 2 for c in llm.calls[:2])
+    assert llm.calls[2]["tools"] is None
 
 
 async def test_tool_error_is_fed_back_and_model_recovers():

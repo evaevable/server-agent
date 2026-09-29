@@ -151,7 +151,6 @@ def _cmd_ask(args: argparse.Namespace) -> int:
 
 async def _ask(args: argparse.Namespace) -> int:
     from server_agent.agent import Agent
-    from server_agent.agent.loop import DEFAULT_SYSTEM
     from server_agent.llm import LLMError, create_llm
 
     try:
@@ -160,8 +159,9 @@ async def _ask(args: argparse.Namespace) -> int:
         print(f"[error] {e}", file=sys.stderr)
         return 2
 
-    agent = Agent(llm, system_prompt=args.system or DEFAULT_SYSTEM, max_steps=args.max_steps,
-                  timeout=args.timeout, stream=not args.no_stream)
+    agent = Agent(llm, system_prompt=args.system, prompt_variant=args.variant,
+                  max_steps=args.max_steps, timeout=args.timeout, stream=not args.no_stream,
+                  report=not args.no_report)
     events: list[dict] = []
     rc = 0
     try:
@@ -192,18 +192,43 @@ def _snippet(text: str, limit: int = 160) -> str:
     return one_line if len(one_line) <= limit else one_line[:limit] + "…"
 
 
+def _report_text(r: dict) -> str:
+    """把结构化报告渲染成人类可读的几行。"""
+    lines = [f"[{r['severity']}] {r['summary']}", f"置信度：{r['confidence']}"]
+    if r.get("findings"):
+        lines.append("观察与依据：")
+        lines += [f"  - {f['claim']}（{f['evidence']}）" for f in r["findings"]]
+    if r.get("root_cause"):
+        lines.append(f"根因：{r['root_cause']}")
+    if r.get("actions"):
+        lines.append("建议动作：")
+        for a in r["actions"]:
+            cmd = f"  命令：{a['command']}" if a.get("command") else ""
+            lines.append(f"  - [{a['risk']}] {a['description']}{cmd}")
+    if r.get("data_gaps"):
+        lines.append("还缺信息：" + "；".join(r["data_gaps"]))
+    return "\n".join(lines)
+
+
 def _render(ev, *, verbose: bool, quiet: bool) -> None:
     """把事件渲染到终端。stderr 放过程（思考、工具），stdout 放最终答案——便于 | jq 之类管道使用。"""
     d = ev.data
     if ev.type == "step":
+        _render.suppress = False   # 每个新步骤重置「正在输出 JSON」标记
         if not quiet:
             print(f"\n── 第 {d['step']} 步 ──", file=sys.stderr)
     elif ev.type == "reasoning":
         if verbose:
             print(f"  [思考] {_snippet(d['text'], 200)}", file=sys.stderr)
     elif ev.type == "text":
-        if not quiet:
-            print(d["text"], end="", flush=True, file=sys.stderr)
+        # 结构化报告是 JSON，逐字流到终端只会是一堆噪音：识别出来就只给一句提示。
+        text = d["text"]
+        if not getattr(_render, "suppress", False) and text.lstrip().startswith("{"):
+            _render.suppress = True
+            if not quiet:
+                print("\n  [正在生成结构化报告…]", file=sys.stderr)
+        if not quiet and not verbose and not getattr(_render, "suppress", False):
+            print(text, end="", flush=True, file=sys.stderr)
     elif ev.type == "tool_call":
         if not quiet:
             print(f"\n  [调用] {d['name']} {_snippet(d['arguments'], 120)}", file=sys.stderr)
@@ -216,20 +241,35 @@ def _render(ev, *, verbose: bool, quiet: bool) -> None:
             print(f"  [{mark}] {d['name']}{extra}{ms}，{d['chars']} 字符{cut}", file=sys.stderr)
             if verbose:
                 print("    " + _snippet(d["content"], 400), file=sys.stderr)
+    elif ev.type == "report":
+        if not d["parsed"]:
+            print(f"\n  [报告] 未能解析为结构化报告：{d.get('error')}", file=sys.stderr)
+        elif not quiet:
+            r = d["report"]
+            print(f"\n  [报告] {r['severity']} / 置信度 {r['confidence']}", file=sys.stderr)
+            if r.get("root_cause"):
+                print(f"    根因：{r['root_cause']}", file=sys.stderr)
+            for a in r.get("actions", []):
+                cmd = f"  → {a['command']}" if a.get("command") else ""
+                print(f"    建议（{a['risk']}）：{a['description']}{cmd}", file=sys.stderr)
     elif ev.type == "error":
         print(f"\n  [错误] {d['message']}", file=sys.stderr)
     elif ev.type == "end":
-        if not d.get("text"):
-            print(f"\n[未得出结论（{d['stopped']}）]", file=sys.stderr)
-        else:
+        # stdout 是「交付物」：有结构化报告就输出可读报告，否则输出原始文本
+        report = d.get("report")
+        if report:
+            print("\n" + _report_text(report))
+        elif d.get("text"):
             print("\n" + d["text"])
+        else:
+            print(f"\n[未得出结论（{d['stopped']}）]", file=sys.stderr)
         u = d.get("usage") or {}
         print(f"[{d['stopped']}] {d['steps']} 步，{d['tool_calls']} 次工具调用，"
               f"{d['elapsed_ms']}ms，token 输入 {u.get('prompt_tokens', 0)} / 输出 {u.get('completion_tokens', 0)}",
               file=sys.stderr)
 
 
-DEFAULT_SYSTEM = "你是一名资深 Linux 运维工程师，回答简洁、给出可执行的命令。"
+CHAT_SYSTEM = "你是一名资深 Linux 运维工程师，回答简洁、给出可执行的命令。"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -247,7 +287,7 @@ def build_parser() -> argparse.ArgumentParser:
     cp = sub.add_parser("chat", help="与模型流式对话（第 02 章，尚无工具）")
     cp.add_argument("--mock", action="store_true", help="使用 MockLLM（echo），不调用真实模型")
     cp.add_argument("--once", metavar="问题", help="只问一句就退出")
-    cp.add_argument("--system", default=DEFAULT_SYSTEM, help="系统提示词")
+    cp.add_argument("--system", default=CHAT_SYSTEM, help="系统提示词")
     cp.add_argument("-v", "--verbose", action="store_true", help="打印 token 用量与历史长度")
     cp.set_defaults(func=_cmd_chat)
 
@@ -267,7 +307,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-stream", action="store_true", help="不用流式，等模型一次性返回")
     ap.add_argument("--max-steps", type=int, default=None, help="覆盖 SA_AGENT_MAX_STEPS")
     ap.add_argument("--timeout", type=float, default=None, help="整次运行超时（秒）")
-    ap.add_argument("--system", default=None, help="覆盖系统提示词")
+    ap.add_argument("--system", default=None, help="覆盖系统提示词（默认由 prompts/ 模板渲染）")
+    ap.add_argument("--variant", default=None, help="提示词变体：sre（默认）或 plain（对照）")
+    ap.add_argument("--no-report", action="store_true", help="不做结构化报告解析")
     ap.add_argument("--json", action="store_true", help="输出完整事件流 JSON（供脚本/前端使用）")
     ap.add_argument("-q", "--quiet", action="store_true", help="只输出最终答案")
     ap.add_argument("-v", "--verbose", action="store_true", help="显示思考内容与工具结果片段")

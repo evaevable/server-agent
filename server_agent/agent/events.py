@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-EventType = Literal["start", "step", "reasoning", "text", "tool_call", "tool_result", "error", "end"]
+EventType = Literal["start", "step", "reasoning", "text", "tool_call", "tool_result", "report", "error", "end"]
 
 
 @dataclass
@@ -34,9 +34,12 @@ class AgentResult:
     steps: int
     tool_calls: int
     usage: Any = None  # server_agent.llm.Usage
-    stopped: str = "final"  # final | max_steps | timeout | no_progress | error
+    stopped: str = "final"  # final | max_steps | timeout | length | error | cancelled
     messages: list = field(default_factory=list)  # 完整消息历史，便于排查与回放
+    report: Any = None  # DiagnosticReport（第 07 章）；解析失败时为 None
+    report_error: str | None = None  # 报告解析失败的原因，便于调试提示词
 
     def to_dict(self) -> dict[str, Any]:
         return {"text": self.text, "steps": self.steps, "tool_calls": self.tool_calls,
-                "usage": asdict(self.usage) if self.usage else None, "stopped": self.stopped}
+                "usage": asdict(self.usage) if self.usage else None, "stopped": self.stopped,
+                "report": self.report, "report_error": self.report_error}

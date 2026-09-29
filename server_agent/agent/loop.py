@@ -23,16 +23,13 @@ from typing import Any, AsyncIterator, Callable
 from server_agent.agent.events import AgentResult, Event
 from server_agent.config import get_settings
 from server_agent.llm.base import LLMClient, LLMError, Message, ToolCall, Usage
+from server_agent.prompts import (
+    DiagnosticReport,
+    parse_report,
+    render_system_prompt,
+    repair_prompt,
+)
 from server_agent.tools.registry import ToolRegistry, registry as default_registry
-
-DEFAULT_SYSTEM = """你是一名资深 Linux 运维工程师，正在通过工具排查一台服务器的问题。
-
-工作方式：
-- 先了解环境，再排查具体问题；每一步都基于上一步的观察结果，不要凭空猜测。
-- 优先使用工具获取事实，不要凭经验直接下结论。
-- 工具返回错误时，读懂错误信息并调整参数重试，不要重复同样的调用。
-- 信息足够时给出结论：现象、判断依据（引用具体数据）、建议的下一步操作。
-- 你目前只有只读工具，不能修改系统；需要改动时只给出建议，不要声称已经执行。"""
 
 NO_TOOL_NOTE = ("[系统提示] 你上一条回复既没有给出最终答案也没有调用工具。"
                 "请直接用文字给出最终结论，或调用合适的工具继续排查。")
@@ -55,22 +52,32 @@ class Agent:
         llm: LLMClient,
         tools: ToolRegistry | None = None,
         *,
-        system_prompt: str = DEFAULT_SYSTEM,
+        system_prompt: str | None = None,
+        prompt_variant: str | None = None,
         max_steps: int | None = None,
         timeout: float | None = None,
         stream: bool = True,
+        report: bool = True,
         clock: Callable[[], float] = time.monotonic,
     ):
         s = get_settings()
         self.llm = llm
         self.tools = tools or default_registry
-        self.system_prompt = system_prompt
+        self.prompt_variant = prompt_variant or s.prompt_variant
+        # 系统提示词默认由模板渲染（会把方法论、工具清单、报告 schema 写进去）；
+        # 传了 system_prompt 就以它为准（测试与实验用）。
+        self.system_prompt = system_prompt if system_prompt is not None else self._render_prompt()
         self.max_steps = max_steps if max_steps is not None else s.agent_max_steps
         self.timeout = timeout if timeout is not None else s.agent_timeout
         self.stream = stream
+        self.report_enabled = report
+        self.report_repair = s.report_repair
         self.clock = clock
         self.usage = Usage()
         self.last_result: AgentResult | None = None
+
+    def _render_prompt(self) -> str:
+        return render_system_prompt(self.prompt_variant, tools=self.tools.names())
 
     # ---------- 单步：问一次模型 ----------
     async def _step(self, messages: list[Message], emit) -> tuple[Message, str | None, str]:
@@ -123,7 +130,8 @@ class Agent:
         messages.append(Message.user(user_input))
 
         await emit("start", {"input": user_input, "max_steps": self.max_steps,
-                             "tools": self.tools.names(), "model": getattr(self.llm, "model", None)})
+                             "tools": self.tools.names(), "model": getattr(self.llm, "model", None),
+                             "prompt_variant": self.prompt_variant})
         async for e in flush():
             yield e
 
@@ -194,12 +202,48 @@ class Agent:
                 yield e
             raise
 
+        report_obj, report_error = await self._build_report(messages, final_text, stopped)
+        if self.report_enabled:
+            data = {"parsed": report_obj is not None, "error": report_error,
+                    "report": report_obj.model_dump() if report_obj else None,
+                    "raw": final_text if report_obj is None else None}
+            await emit("report", data)
+            async for e in flush():
+                yield e
+
         result = AgentResult(text=final_text, steps=step, tool_calls=tool_call_count,
-                             usage=self.usage, stopped=stopped, messages=messages)
+                             usage=self.usage, stopped=stopped, messages=messages,
+                             report=report_obj.model_dump() if report_obj else None,
+                             report_error=report_error)
         self.last_result = result  # 供 run_sync 等调用方取用（含完整消息历史）
         await emit("end", {**result.to_dict(), "elapsed_ms": round((self.clock() - started) * 1000, 1)})
         async for e in flush():
             yield e
+
+    # ---------- 结构化报告 ----------
+    async def _build_report(self, messages: list[Message], text: str, stopped: str
+                            ) -> tuple[DiagnosticReport | None, str | None]:
+        """把最终文本解析成诊断报告；解析失败时追加一次「改写为 JSON」的请求。
+
+        注意这次额外请求也算 token，所以只在确实没解析出来时发生，且只做一次。
+        """
+        if not self.report_enabled or not text.strip():
+            return None, None
+        report, error = parse_report(text)
+        if report is not None:
+            return report, None
+        if not self.report_repair or stopped in ("error", "timeout", "cancelled"):
+            return None, error
+        try:
+            repaired = await self.llm.chat(
+                messages + [Message.user(repair_prompt(text))],
+                max_tokens=get_settings().agent_max_tokens,
+            )
+        except LLMError:
+            return None, error
+        self.usage = self.usage + repaired.usage
+        report, error2 = parse_report(repaired.message.content or "")
+        return (report, None) if report is not None else (None, error2 or error)
 
     async def _run_tools(self, calls: list[ToolCall], seen: set[tuple[str, str]], emit) -> list[str]:
         """执行本轮全部工具调用，返回与 calls 等长的「观察」文本列表。
