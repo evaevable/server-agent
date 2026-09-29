@@ -65,6 +65,16 @@ class DockerSandbox:
             for name, content in files.items():
                 target = Path(data_dir) / Path(name).name      # 只取文件名，防止路径穿越
                 target.write_text(content, encoding="utf-8")
+        try:
+            return await self._run_container(code, sandbox_id, data_dir, timeout)
+        finally:
+            if data_dir:
+                import shutil
+
+                shutil.rmtree(data_dir, ignore_errors=True)   # 超时、异常路径也要清理输入数据
+
+    async def _run_container(self, code: str, sandbox_id: str, data_dir: str | None,
+                             timeout: float) -> SandboxResult:
         argv = self._argv(code, sandbox_id, data_dir)
         started = time.perf_counter()
         try:
@@ -84,10 +94,6 @@ class DockerSandbox:
         err = stderr.decode("utf-8", errors="replace")
         if proc.returncode != 0 and "Cannot connect to the Docker daemon" in err:
             raise SandboxError("Docker daemon 没在运行（macOS 上可执行 colima start）")
-        if data_dir:
-            import shutil
-
-            shutil.rmtree(data_dir, ignore_errors=True)
         return SandboxResult(proc.returncode == 0,
                              stdout.decode("utf-8", errors="replace")[:20000],
                              err[:8000], proc.returncode or 0, self.backend, sandbox_id, elapsed)

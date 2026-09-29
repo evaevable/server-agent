@@ -47,13 +47,40 @@ def _run(argv: list[str], timeout: float = 30.0) -> CommandOutcome:
     return CommandOutcome(proc.returncode == 0, out.strip()[:4000], proc.returncode)
 
 
-def _service_restart(name: str) -> CommandOutcome:
-    """重启服务。macOS 用 brew services，Linux 用 systemctl（没有 systemd 就试 service）。"""
+def _service_manager() -> str:
+    """识别服务管理器：生产环境是 systemd；SysV 作为老系统兜底；brew 只用于 macOS 本机开发。"""
     if os.uname().sysname == "Darwin":
-        return _run(["brew", "services", "restart", name])
-    if Path("/bin/systemctl").exists() or Path("/usr/bin/systemctl").exists():
-        return _run(["sudo", "-n", "systemctl", "restart", name])
-    return _run(["service", name, "restart"])
+        return "brew"
+    if Path("/run/systemd/system").is_dir():          # systemd 官方推荐的探测方式（sd_booted）
+        return "systemd"
+    return "sysv"
+
+
+def _privileged(argv: list[str]) -> list[str]:
+    """非 root 时走 sudo -n：没有免密 sudo 就立即失败，而不是卡在密码提示上。"""
+    return argv if os.geteuid() == 0 else ["sudo", "-n", *argv]
+
+
+def _restart_argv(name: str, manager: str) -> list[str]:
+    if manager == "systemd":
+        return _privileged(["systemctl", "restart", name])
+    if manager == "sysv":
+        return _privileged(["service", name, "restart"])
+    return ["brew", "services", "restart", name]
+
+
+def _service_restart(name: str) -> CommandOutcome:
+    """重启服务，并在 systemd 上确认重启后确实是 active；失败时附上最近的 journal 便于判断原因。"""
+    manager = _service_manager()
+    outcome = _run(_restart_argv(name, manager), timeout=90)
+    if manager != "systemd":
+        return outcome
+    state = _run(["systemctl", "is-active", name], timeout=10)
+    if outcome.ok and state.output.strip() == "active":
+        return CommandOutcome(True, (outcome.output + "\nis-active: active").strip(), 0)
+    journal = _run(["journalctl", "-u", name, "-n", "20", "--no-pager", "-o", "short-iso"], timeout=10)
+    detail = f"{outcome.output}\nis-active: {state.output.strip() or 'unknown'}\n--- journal ---\n{journal.output}"
+    return CommandOutcome(False, detail.strip()[:4000], outcome.returncode or 3)
 
 
 def _kill_pid(pid: int, signal: str) -> CommandOutcome:
@@ -116,8 +143,8 @@ def restart_service(
     """重启一个系统服务（nginx、redis 等）。属于变更操作：会中断该服务的现有连接，
     必须经过人工审批才真正执行。默认 dry_run=true，只告诉你将要执行什么命令。"""
     if dry_run:
-        backend = "brew services restart" if os.uname().sysname == "Darwin" else "systemctl restart"
-        return {"dry_run": True, "action": f"{backend} {name}",
+        manager = _service_manager()
+        return {"dry_run": True, "action": " ".join(_restart_argv(name, manager)), "service_manager": manager,
                 "impact": f"{name} 会短暂中断（数秒），现有连接被断开",
                 "hint": "确认无误后由人工批准，才会真正执行"}
     outcome = _service_restart(name)

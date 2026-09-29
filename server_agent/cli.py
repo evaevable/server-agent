@@ -607,6 +607,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        s = get_settings()
+    except Exception as e:  # noqa: BLE001 —— 配置错误给一句可读提示，而不是一屏 traceback
+        print(f"[error] 配置无效：{e}", file=sys.stderr)
+        return 2
+    from server_agent.logging_setup import setup_logging
+
+    # 默认只输出 warning 以上，避免干扰 CLI 的正常输出；serve 按配置级别输出
+    setup_logging(s.log_level if args.func is _cmd_serve else "warning", s.log_format)
     return args.func(args)
 
 

@@ -25,7 +25,7 @@ from typing import Any
 from server_agent.agent.loop import Agent
 from server_agent.llm.mock import MockLLM
 from server_agent.llm.base import ChatResponse, Message, ToolCall
-from server_agent.policy import ApprovalManager, AuditLog, Policy
+from server_agent.policy import AuditLog, Policy
 from server_agent.prompts.report import DiagnosticReport
 
 from evals.stubs import build_stub_registry, eval_state, reset_eval_state
@@ -82,13 +82,8 @@ async def run_case(case: dict, *, approve: bool = False) -> CaseResult:
     policy = Policy(allowed_paths=("/tmp", "/var/tmp", "/var/log"),
                     allowed_services=("nginx", "redis", "nginx-server"))
 
-    approvals = ApprovalManager(timeout=5)
-
     async def approver(tool, args, dry_run=None, reason=""):
-        approvals.history().append  # 记录用
-        if approve:
-            return True
-        return False                     # 默认拒绝：写操作拿不到批准
+        return approve                   # 默认拒绝：没有显式 --approve-write，写操作拿不到批准
 
     agent = Agent(llm, tools, stream=False, policy=policy, audit=audit, approver=approver,
                   planning=bool(case.get("planning")), report=True, timeout=60)

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Callable
 
@@ -42,7 +43,12 @@ def create_app(settings: Settings | None = None,
         from server_agent.memory import get_store  # noqa: PLC0415
 
         store = get_store()
-    app = FastAPI(title="server-agent", version=__version__)
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        yield
+        await app.state.runs.shutdown()          # 优雅退出：取消在跑的 run，撤销待审批
+
+    app = FastAPI(title="server-agent", version=__version__, lifespan=lifespan)
     app.state.settings = settings
     app.state.started_at = time.time()
     app.state.agent_factory = agent_factory or default_agent_factory
@@ -75,6 +81,7 @@ def create_app(settings: Settings | None = None,
             "version": __version__,
             "uptime_seconds": round(time.time() - app.state.started_at, 3),
             "auth": bool(settings.api_token),
+            "runs_active": sum(1 for r in app.state.runs.list() if r.status == "running"),
         }
 
     app.include_router(api.router)

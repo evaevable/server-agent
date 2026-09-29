@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -21,6 +22,8 @@ from server_agent.agent.events import AgentResult, Event
 from server_agent.agent.loop import Agent
 from server_agent.memory.recorder import Recorder
 from server_agent.memory.store import Store
+
+log = logging.getLogger(__name__)
 
 MAX_RUNS = 50  # 内存里最多保留多少个 run（超出后淘汰最旧的已完成 run）
 MAX_EVENTS = 2000  # 单个 run 最多保留多少事件（防止长跑任务吃光内存）
@@ -85,6 +88,7 @@ class RunManager:
             agent.approver = self._make_approver(run)
         recorder = Recorder(self.store, run.id, user_input) if self.store else None
         run.task = asyncio.create_task(self._drive(run, agent, history, recorder))
+        log.info("run started", extra={"run_id": run.id})
         self._runs[run.id] = run
         self._evict()
         return run
@@ -123,6 +127,9 @@ class RunManager:
             if self.approvals is not None:
                 self.approvals.cancel_run(run.id, reason="run 已结束")
             run.finished_at = time.time()
+            log.info("run finished", extra={"run_id": run.id, "status": run.status,
+                                            "duration_s": round(run.finished_at - run.created_at, 2),
+                                            "error": run.error})
             if recorder and run.result:
                 recorder.finish(run.result, status=run.status, error=run.error)
             elif recorder:
@@ -141,6 +148,20 @@ class RunManager:
         except (asyncio.CancelledError, Exception):  # noqa: BLE001
             pass
         return True
+
+    async def shutdown(self, timeout: float = 10.0) -> int:
+        """服务退出时调用：取消所有仍在运行的 run，等它们走完 finally（落库、关闭订阅、撤销待审批）。
+
+        返回被取消的 run 数量。不做这一步，进程退出时正在跑的任务会被直接丢弃：
+        数据库里留下永远是 running 的记录，挂着的审批也不会被撤销。
+        """
+        running = [r for r in self._runs.values() if r.status == "running" and r.task and not r.task.done()]
+        for r in running:
+            r.task.cancel()
+        if running:
+            await asyncio.wait([r.task for r in running], timeout=timeout)
+            log.warning("shutdown cancelled %d running run(s)", len(running))
+        return len(running)
 
     # ---------- 订阅 ----------
     async def subscribe(self, run: Run, after_seq: int = 0) -> AsyncIterator[Event]:

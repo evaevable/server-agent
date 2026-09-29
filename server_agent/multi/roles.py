@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 READ_TOOLS = (
     "host_info", "cpu_memory_usage", "disk_usage", "top_processes", "listening_ports",
-    "tail_file", "run_command", "remote_run", "remote_logs", "search_knowledge",
+    "tail_file", "find_large_files", "deleted_open_files", "service_status", "run_command", "remote_run", "remote_logs", "search_knowledge",
     "list_knowledge_docs", "list_runbooks", "load_runbook", "recall_host",
 )
 WRITE_TOOLS = ("restart_service", "kill_process", "clean_directory", "remote_restart_service",

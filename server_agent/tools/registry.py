@@ -12,11 +12,14 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, get_type_hints
 
 from pydantic import BaseModel, ConfigDict, ValidationError, create_model
+
+log = logging.getLogger(__name__)
 
 Risk = Literal["read", "low", "high", "forbidden"]  # 第 09 章据此做审批
 DEFAULT_MAX_CHARS = 4000
@@ -165,6 +168,7 @@ class ToolRegistry:
         start = time.perf_counter()
 
         def fail(msg: str) -> ToolResult:
+            log.info("tool failed: %s", msg[:200], extra={"tool": name, "run_id": run_id, "ok": False})
             return ToolResult(name, False, json.dumps({"error": msg}, ensure_ascii=False), error=msg,
                               elapsed_ms=round((time.perf_counter() - start) * 1000, 1))
 
@@ -240,6 +244,8 @@ class ToolRegistry:
         if audit:
             audit.log("tool_result", run_id=run_id, tool=t.name, args=kwargs, ok=True,
                       duration_ms=elapsed, detail=content[:300])
+        log.info("tool ok", extra={"tool": t.name, "run_id": run_id, "ok": True,
+                                   "duration_ms": elapsed, "chars": len(content), "truncated": cut})
         return ToolResult(name, True, content, data=result, truncated=cut, elapsed_ms=elapsed)
 
     async def _execute(self, t: Tool, kwargs: dict):

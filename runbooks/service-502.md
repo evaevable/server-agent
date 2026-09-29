@@ -10,7 +10,7 @@ symptoms: [502, 503, 服务, nginx, 起不来, 网关, upstream, 连接不上, �
 2. 端口被别的进程占用也会导致起不来（`ss -lntp` 里 pid 对不上）。
 
 ## 定位
-1. `systemctl status <service>` 看退出码与最近日志；
+1. `service_status`（≈ `systemctl show` + `journalctl -u`）看 active 状态、重启次数、退出码与最近日志；
 2. `tail_file` 看应用日志里的启动错误（配置语法、端口占用、权限、依赖连接失败）；
 3. nginx 场景先 `nginx -t` 校验配置。
 

@@ -79,10 +79,26 @@ def cpu_memory_usage(
     }
 
 
+def _inode_usage(mount: str) -> float | None:
+    """inode 使用率（df -i）。有的文件系统（如 btrfs、部分网络盘）不报告 inode，返回 None。"""
+    try:
+        st = os.statvfs(mount)
+    except (OSError, AttributeError):
+        return None
+    if not st.f_files:
+        return None
+    return round((st.f_files - st.f_ffree) / st.f_files * 100, 1)
+
+
 def _usage_row(mount: str, device: str | None = None, fstype: str | None = None) -> dict:
     u = psutil.disk_usage(mount)
     row = {"mount": mount, "total": human(u.total), "used": human(u.used), "free": human(u.free),
            "percent": u.percent}
+    inodes = _inode_usage(mount)
+    if inodes is not None:
+        row["inodes_percent"] = inodes
+        if inodes >= WARN_PERCENT:
+            row["inode_warning"] = f"inode 使用率 {inodes:.0f}%：还有空间也可能写不进新文件（海量小文件）"
     if device:
         row["device"] = device
     if fstype:
@@ -96,8 +112,8 @@ def _usage_row(mount: str, device: str | None = None, fstype: str | None = None)
 def disk_usage(
     path: Annotated[str | None, Field(description="要查看的路径，如 / 或 /var/log；不填则列出所有分区")] = None,
 ) -> dict:
-    """查看磁盘空间使用情况（相当于 df -h）：每个分区的总量、已用、可用与使用率，使用率 >= 90% 会带 warning。
-    只统计分区级别，不统计某个目录占多大。"""
+    """查看磁盘空间使用情况（相当于 df -h + df -i）：每个分区的总量、已用、可用、使用率与 inode 使用率，
+    任一项 >= 90% 会带 warning。只统计分区级别；要找具体是哪个文件，用 find_large_files / deleted_open_files。"""
     if path:
         if not Path(path).exists():
             raise ToolError(f"路径不存在: {path}")

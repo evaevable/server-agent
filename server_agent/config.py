@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     host: str = Field("127.0.0.1", description="监听地址。默认只监听本机，远程访问需显式改成 0.0.0.0")
     port: int = Field(8000, ge=1, le=65535, description="监听端口")
     log_level: str = Field("info", description="日志级别：debug / info / warning / error")
+    log_format: str = Field("text", description="日志格式：text（人读）/ json（每行一个 JSON，便于采集）")
     api_token: str | None = Field(None, description="远程调用鉴权 Token，第 05 章启用")
 
     # ---- 第 02 章：LLM 配置。同时接受 LLM_XXX 与 SA_LLM_XXX 两种写法 ----
@@ -97,6 +98,22 @@ class Settings(BaseSettings):
     agent_max_steps: int = Field(12, ge=1, le=50, description="单次提问最多几步（一步=一次模型调用）")
     agent_timeout: float = Field(300.0, gt=0, description="单次提问的总超时（秒）")
     agent_max_tokens: int = Field(1024, ge=64, le=32768, description="模型单次回复的最大 token 数")
+
+    @field_validator("log_format")
+    @classmethod
+    def _check_log_format(cls, v: str) -> str:
+        v = v.lower()
+        if v not in {"text", "json"}:
+            raise ValueError(f"不支持的日志格式: {v}（可选 text / json）")
+        return v
+
+    @field_validator("sandbox_backend")
+    @classmethod
+    def _check_sandbox_backend(cls, v: str) -> str:
+        v = v.lower()
+        if v not in {"auto", "local_docker", "ags"}:
+            raise ValueError(f"不支持的沙箱后端: {v}（可选 auto / local_docker / ags）")
+        return v
 
     @field_validator("log_level")
     @classmethod
