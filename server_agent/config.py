@@ -7,8 +7,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Any
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,6 +26,22 @@ class Settings(BaseSettings):
     log_level: str = Field("info", description="日志级别：debug / info / warning / error")
     api_token: str | None = Field(None, description="远程调用鉴权 Token，第 05 章启用")
 
+    # ---- 第 02 章：LLM 配置。同时接受 LLM_XXX 与 SA_LLM_XXX 两种写法 ----
+    llm_provider: str = Field("openai_compat", validation_alias=AliasChoices("LLM_PROVIDER", "SA_LLM_PROVIDER"),
+                              description="openai_compat 或 mock")
+    llm_base_url: str | None = Field(None, validation_alias=AliasChoices("LLM_BASE_URL", "SA_LLM_BASE_URL"),
+                                     description="如 https://api.deepseek.com/v1")
+    llm_api_key: str | None = Field(None, validation_alias=AliasChoices("LLM_API_KEY", "SA_LLM_API_KEY"))
+    llm_model: str | None = Field(None, validation_alias=AliasChoices("LLM_MODEL", "SA_LLM_MODEL"))
+    llm_temperature: float = Field(0.2, ge=0, le=2, validation_alias=AliasChoices("LLM_TEMPERATURE", "SA_LLM_TEMPERATURE"))
+    llm_timeout: float = Field(60.0, gt=0, validation_alias=AliasChoices("LLM_TIMEOUT", "SA_LLM_TIMEOUT"))
+    llm_max_retries: int = Field(2, ge=0, le=10, validation_alias=AliasChoices("LLM_MAX_RETRIES", "SA_LLM_MAX_RETRIES"))
+    llm_stream_usage: bool = Field(True, validation_alias=AliasChoices("LLM_STREAM_USAGE", "SA_LLM_STREAM_USAGE"),
+                                   description="流式时请求 usage；个别服务不支持 stream_options 时设为 false")
+    llm_extra_body: dict[str, Any] = Field(default_factory=dict,
+                                           validation_alias=AliasChoices("LLM_EXTRA_BODY", "SA_LLM_EXTRA_BODY"),
+                                           description='JSON，合并进请求体的厂商私有参数，如 {"thinking":{"type":"disabled"}}')
+
     @field_validator("log_level")
     @classmethod
     def _check_level(cls, v: str) -> str:
@@ -33,7 +50,7 @@ class Settings(BaseSettings):
             raise ValueError(f"不支持的日志级别: {v}")
         return v
 
-    @field_validator("api_token")
+    @field_validator("api_token", "llm_api_key", "llm_base_url", "llm_model")
     @classmethod
     def _empty_to_none(cls, v: str | None) -> str | None:
         return v or None
@@ -41,8 +58,9 @@ class Settings(BaseSettings):
     def public_dict(self) -> dict:
         """用于打印/接口返回：敏感字段打码。"""
         data = self.model_dump()
-        if data.get("api_token"):
-            data["api_token"] = "***"
+        for k in ("api_token", "llm_api_key"):
+            if data.get(k):
+                data[k] = "***"
         return data
 
 
