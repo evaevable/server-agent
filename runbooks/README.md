@@ -1,6 +1,6 @@
 # runbooks：排障手册
 
-> 引入章节：第 12 章（规划、反思与 Runbook）· 加载代码：`server_agent/knowledge/runbooks.py` · 模块文档：[docs/modules/planner.md](../docs/modules/planner.md)
+> 对应章节：第 12 章（规划、反思与 Runbook）· 加载代码：`server_agent/knowledge/runbooks.py` · 模块文档：[docs/modules/planner.md](../docs/modules/planner.md)
 
 Runbook 是「专家会怎么查」的**程序性知识**：遇到某类故障时先看什么、再看什么、什么情况下才动手。
 Agent 通过两个只读工具使用它们：

@@ -1,6 +1,6 @@
 # 模块：mcp（MCP Server / Client）
 
-- 引入章节：第 14 章
+- 对应章节：第 14 章
 - 源码：`server_agent/mcp/server.py`、`server_agent/mcp/client.py`、`server-agent mcp` 子命令
 - 测试：`tests/test_mcp.py`（11 个，含一次真实子进程往返）
 

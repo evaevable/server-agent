@@ -1,6 +1,6 @@
 # evals：离线评测集
 
-> 引入章节：第 15 章（评估与可观测性）· 模块文档：[docs/modules/tracing.md](../docs/modules/tracing.md)
+> 对应章节：第 15 章（评估与可观测性）· 模块文档：[docs/modules/tracing.md](../docs/modules/tracing.md)
 
 评测回答的是「改了提示词/循环/策略之后，Agent 变好了还是变坏了」。这里的评测**全部离线、确定、可重复**：
 模型走脚本（MockLLM），机器状态用桩工具固定，不花 token、不依赖真机。
@@ -64,9 +64,9 @@ server-agent eval --cases evals/cases --approve-write  # 对标了 approve_write
 | `service-down-detects-missing-port` | service_down | 通过端口缺失判断服务停了 |
 | `no-tool-fabrication` | disk_full | 问的是数据库，模型没查就下结论：验证不会顺手调写操作工具（清理/重启）、步数不超过 2 |
 
-## 写新用例的坑（都踩过）
+## 写新用例的常见陷阱
 
-1. **同一工具的参数必须不同**。第 04 章的重复调用检测会拦下参数完全相同的第二次调用，结果只剩一行提醒，判定会莫名失败。
+1. **同一工具的参数必须不同**。第 4 章的重复调用检测会拦下参数完全相同的第二次调用，结果只剩一行提醒，判定会莫名失败。
 2. **策略 `allowed_paths` 已含 `/var/log`**（`runner.py` 里写死）。清理其它目录的写操作会在审批之前就被判 forbidden，
    指标表现为 `denials>0, approvals=0`——这可能正是你想测的，也可能是用例写错了，看清楚再下结论。
 3. **报告字段要符合 `DiagnosticReport` Schema**，否则会走一次「修复提示」，剧本里就要多准备一条模型回复。
@@ -75,5 +75,5 @@ server-agent eval --cases evals/cases --approve-write  # 对标了 approve_write
 ## 这套评测测不到什么
 
 - **真模型会不会这么走**：剧本是人写的，这里测的是「给定模型行为时，循环/策略/报告解析是否正确」。
-  要评估真模型，换成真 LLM 跑同一批问题并人工或用 LLM-as-judge 判分（见第 15 章讲义）。
+  要评估真模型，换成真 LLM 跑同一批问题并人工或用 LLM-as-judge 判分（见第 15 章）。
 - **真机上的工具输出**：桩数据是固定的；远程/SSH 路径需要靶场（`make lab-up`，要 Docker）。

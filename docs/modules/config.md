@@ -1,6 +1,6 @@
 # 模块：config / cli / server 骨架
 
-- 引入章节：第 01 章
+- 对应章节：第 1 章
 - 源码：`server_agent/config.py`、`server_agent/cli.py`、`server_agent/server/app.py`
 - 测试：`tests/test_config.py`、`tests/test_cli.py`、`tests/test_health.py`
 
@@ -10,7 +10,7 @@
 |---|---|---|
 | `config.py` | 从环境变量 / `.env` / 默认值加载并校验配置，提供进程内单例 | 不读写任何业务数据 |
 | `cli.py` | 命令行入口，解析子命令并分发 | 不包含业务逻辑，只做参数转发 |
-| `server/app.py` | 应用工厂 `create_app()`，挂载路由 | 第 01 章只有健康检查 |
+| `server/app.py` | 应用工厂 `create_app()`，挂载路由与生命周期 | 不含业务逻辑 |
 
 ## 配置项
 
@@ -18,8 +18,9 @@
 |---|---|---|---|
 | `SA_HOST` | `127.0.0.1` | — | 监听地址；安全默认只监听本机 |
 | `SA_PORT` | `8000` | 1-65535 | 监听端口 |
-| `SA_LOG_LEVEL` | `info` | debug/info/warning/error，大小写不敏感 | 日志级别 |
-| `SA_API_TOKEN` | 空 | 空串视为未设置 | 远程调用鉴权，第 05 章启用 |
+| `SA_LOG_LEVEL` | `info` | debug/info/warning/error，大小写不敏感 | 日志级别（`serve` 生效；其它 CLI 子命令固定 warning） |
+| `SA_LOG_FORMAT` | `text` | text / json | json 时每行一个 JSON（含 `run_id`、`tool`、`duration_ms` 等字段），便于日志平台采集 |
+| `SA_API_TOKEN` | 空 | 空串视为未设置 | 远程调用鉴权；监听非本机地址时必须设置 |
 
 优先级：进程环境变量 > 当前工作目录 `.env` > 默认值。
 
@@ -70,5 +71,5 @@ flowchart LR
 ## 已知限制
 
 - `.env` 按**当前工作目录**查找，从其他目录启动时不会读到仓库里的 `.env`。
-- `/health` 只代表进程存活，不检查 LLM 等依赖；第 05 章区分 liveness 与 readiness。
-- 本章未启用鉴权，`SA_API_TOKEN` 只用于告警判断。
+- `/health` 只代表进程存活（附 `runs_active`），不检查 LLM 等依赖；没有单独的 readiness 探针。
+- 配置非法（如 `SA_LOG_FORMAT=xml`、`SA_SANDBOX_BACKEND=k8s`）时 CLI 直接退出，返回码 2。

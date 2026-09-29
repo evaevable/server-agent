@@ -47,7 +47,7 @@ make serve                                # 重启服务
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | `401` | 未带 Token 或 Token 错 | 检查 `SA_API_TOKEN` 与请求头；`/health` 会返回 `auth: true` |
-| `no running event loop` | 在同步上下文里创建任务 | 用 async 路由/函数（第 05 章的坑） |
+| `no running event loop` | 在同步上下文里创建任务 | 用 async 路由/函数（常见陷阱） |
 | 任务一直 `running` | 模型接口卡住或审批未决 | 看 `GET /api/runs/{id}/approvals`；必要时 `POST /api/runs/{id}/cancel` |
 | 工具结果被截断 | 结果超过 `max_chars` | 缩小查询范围（加 `port`/`limit`/`grep` 参数） |
 | 写操作总被拒 | 审批没人点 / 策略白名单不含该目标 | 看审计 `denied` 记录的 `decision` 字段区分原因 |

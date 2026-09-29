@@ -1,6 +1,6 @@
 # server-agent HTTP / WebSocket 接口
 
-- 版本：0.1.0（第 05 章）
+- 版本：0.1.0
 - 默认地址：`http://127.0.0.1:8000`
 - 鉴权：设置环境变量 `SA_API_TOKEN` 后，`/api/*` 与 `/ws` 需要 `Authorization: Bearer <token>`；`/health` 始终公开。
 

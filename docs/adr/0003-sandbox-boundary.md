@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-09-29
-- 相关：`server_agent/sandbox/`、`server_agent/tools/sandbox_tool.py`、[ADR-0002](0002-no-arbitrary-shell.md)、第 11 章讲义、[sandbox 模块文档](../modules/sandbox.md)
+- 相关：`server_agent/sandbox/`、`server_agent/tools/sandbox_tool.py`、[ADR-0002](0002-no-arbitrary-shell.md)、第 11 章、[sandbox 模块文档](../modules/sandbox.md)
 
 ## 背景
 
@@ -55,7 +55,7 @@ ADR-0002 规定不给 Agent 任意 shell：它能调的只有校验过的专用�
   - 容器共享宿主内核，隔离强度弱于 AGS 背后的 MicroVM；多租户或更敏感的场景应切 AGS。
 - **暂不落地的部分**（SYLLABUS 第 11 章原计划，此处明确推迟）：
   - **沙箱预演**（审批前在同镜像沙箱里先执行一遍高危操作）：只对有一致镜像的环境（靶场、容器化服务）成立，
-    对普通物理机/虚拟机不成立；目前审批卡片展示的仍是第 09 章的 dry-run 结果。
+    对普通物理机/虚拟机不成立；目前审批卡片展示的仍是第 9 章的 dry-run 结果。
   - **`lab/ags/`**（用 AGS 自定义沙箱承载靶机）：没有 Key，无法在真实环境验证，先不交付未验证的配置。
   两者要做时，必须遵守上面四条：预演用的沙箱同样不能拿到生产凭证。
 - 约束：代码评审时发现以下任一情况，视为违反本 ADR —— `exec`/`eval`/`subprocess` 执行模型输出；

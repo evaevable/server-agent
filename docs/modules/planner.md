@@ -1,6 +1,6 @@
 # 模块：planner + knowledge/runbooks（规划与手册）
 
-- 引入章节：第 12 章
+- 对应章节：第 12 章
 - 源码：`server_agent/agent/planner.py`、`server_agent/knowledge/runbooks.py`、`server_agent/tools/runbook_tools.py`、`runbooks/`
 - 测试：`tests/test_planning_runbooks.py`（15 个）
 

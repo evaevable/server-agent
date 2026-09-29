@@ -6,11 +6,14 @@
 |---|---|---|
 | 这台机器什么情况 | `host_info` | `uname -a; uptime; nproc` |
 | CPU / 内存紧不紧 | `cpu_memory_usage` | `top -bn1 \| head; free -h; uptime` |
-| 哪个分区满了 | `disk_usage` | `df -h` |
+| 哪个分区满了 / inode 满了 | `disk_usage` | `df -h`；`df -i` |
 | 谁在吃 CPU / 内存 | `top_processes` | `ps aux --sort=-%cpu \| head` |
 | 端口被谁占着 | `listening_ports` | `ss -lntp`（macOS：`lsof -nP -iTCP -sTCP:LISTEN`） |
 | 日志最近报了什么 | `tail_file` | `tail -n 100 app.log`；`grep -i error` |
 | 目录为什么大 | `run_command` | `du -sh /var/log/* \| sort -h \| tail` |
+| 到底是哪个大文件 | `find_large_files` | `find /var/log -xdev -type f -size +100M -exec ls -lh {} +` |
+| 删了文件空间没回来 | `deleted_open_files` | `lsof +L1`（或 `ls -l /proc/*/fd \| grep deleted`） |
+| 服务是什么状态、重启过几次 | `service_status` | `systemctl show nginx -p ActiveState,SubState,NRestarts,ExecMainStatus`；`journalctl -u nginx -n 50` |
 
 ## 远程与容器
 

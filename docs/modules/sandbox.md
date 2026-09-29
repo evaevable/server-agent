@@ -1,6 +1,6 @@
 # 模块：sandbox（沙箱）+ run_python
 
-- 引入章节：第 11 章
+- 对应章节：第 11 章
 - 源码：`server_agent/sandbox/`、`server_agent/tools/sandbox_tool.py`
 - 测试：`tests/test_sandbox.py`（13 个 + 1 个 Docker 真实执行，daemon 不可用时跳过）
 - 边界决策：[ADR-0003](../adr/0003-sandbox-boundary.md)（任意代码只在沙箱里跑；沙箱不是操作生产机的通道）

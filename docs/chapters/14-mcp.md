@@ -1,14 +1,18 @@
 # 第 14 章 工具的 USB 接口：MCP 协议
 
-> **本章导读**
-> - 建议用时：知识 40 分钟 + 动手 30 分钟
-> - 前置知识：第 03 章（工具注册表）、第 09 章（策略与默认拒绝）
-> - 读完能回答：MCP 解决什么问题？暴露工具时最容易犯什么错？接入外部工具的风险在哪？
-> - 本章代码：`server_agent/mcp/server.py`、`server_agent/mcp/client.py`、`server-agent mcp` 子命令。对应 tag `ch14`。
+**前置知识**：第 3 章（工具注册表）、第 9 章（策略与默认拒绝）
+
+**本章代码**：`server_agent/mcp/server.py`、`server_agent/mcp/client.py`、`server-agent mcp` 子命令。
+
+**学习目标**：读完本章，应能回答以下问题。
+
+1. MCP 解决什么问题？
+2. 暴露工具时最容易犯什么错？
+3. 接入外部工具的风险在哪？
 
 ---
 
-## 【积木 14-1】MCP 想解决什么：把 M × N 变成 M + N
+## 14.1 MCP 想解决什么：把 M × N 变成 M + N
 
 在没有标准之前，每个 Agent 框架都要为自己的工具写适配层：M 个框架 × N 个工具 = M×N 份适配代码。
 
@@ -18,7 +22,7 @@ MCP（Model Context Protocol）做的事，是把接口标准化：
 flowchart LR
     H1["宿主 A（IDE）"] --> C1["MCP Client"]
     H2["宿主 B（Agent 平台）"] --> C2["MCP Client"]
-    C1 --> S1["MCP Server：我们的工具"]
+    C1 --> S1["MCP Server：server-agent 的工具"]
     C2 --> S1
     C1 --> S2["MCP Server：数据库查询"]
     C1 --> S3["MCP Server：K8s 工具"]
@@ -35,7 +39,7 @@ flowchart LR
 
 ---
 
-## 【积木 14-2】最小协议：JSON-RPC over stdio
+## 14.2 最小协议：JSON-RPC over stdio
 
 stdio 传输的规则很朴素：**一行一个 JSON-RPC 消息**（换行分隔），不要往 stdout 打日志（日志走 stderr）。
 
@@ -53,27 +57,27 @@ stdio 传输的规则很朴素：**一行一个 JSON-RPC 消息**（换行分隔
 |---|---|
 | 通知没有 `id`，也不该回响应 | 回了会让客户端等错东西 |
 | 错误分两类：协议错（`error` 字段）与工具错（`result.isError=true`） | 工具执行失败属于业务结果，不是协议错误 |
-| `inputSchema` 就是 JSON Schema | 与第 03 章给模型看的参数格式完全一致——**同一份 schema，换个传输方式而已** |
+| `inputSchema` 就是 JSON Schema | 与第 3 章给模型看的参数格式完全一致——**同一份 schema，换个传输方式而已** |
 
 ---
 
-## 【积木 14-3】暴露工具时的三条规矩
+## 14.3 暴露工具时的三条规矩
 
 把内部工具暴露出去，风险比在内部使用**只多不少**（受众变了）。本章守三条：
 
 | 规矩 | 实现 | 原因 |
 |---|---|---|
 | **默认只暴露只读工具** | `read` / `low` 才出现在 `tools/list`；写操作要 `--expose-write` | fail-closed：误暴露的代价远大于少暴露 |
-| **策略层照旧生效** | `tools/call` 走 `registry.call(policy=..., audit=...)` | 换传输方式 ≠ 换安全模型（第 09 章的教训） |
+| **策略层照旧生效** | `tools/call` 走 `registry.call(policy=..., audit=...)` | 换传输方式 ≠ 换安全模型（第 9 章的教训） |
 | **没有审批人 → 按拒绝处理** | `approver=None`，所以 high 风险调用直接失败 | 「没人能批准」就是「不能执行」 |
 
 第三条是本项目「默认拒绝」原则的又一站：**终端有交互式审批、Web 端有按钮、MCP 端什么都没有——那就拒绝。**
 
 ---
 
-## 【积木 14-4】接入外部工具：把别人当成高危
+## 14.4 接入外部工具：把别人当成高危
 
-反向也做了：`MCPClient` 能连任意外部 MCP Server，把它的工具注册进我们的注册表。
+反向也做了：`MCPClient` 能连任意外部 MCP Server，把它的工具注册进本地注册表。
 
 | 风险 | 处理 |
 |---|---|
@@ -86,7 +90,7 @@ stdio 传输的规则很朴素：**一行一个 JSON-RPC 消息**（换行分隔
 
 ---
 
-## 【代码走读】本章落地了什么
+## 14.5 代码走读
 
 ```text
 server_agent/mcp/
@@ -100,7 +104,7 @@ server_agent/cli.py  # server-agent mcp serve [--expose-write] / mcp list / mcp 
 
 ---
 
-## 【动手练习】
+## 14.6 动手练习
 
 1. **自己当一次 MCP 客户端**（不需要外部服务）：
    ```bash
@@ -113,13 +117,13 @@ server_agent/cli.py  # server-agent mcp serve [--expose-write] / mcp list / mcp 
    ```bash
    printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}' | python -m server_agent.mcp.server --expose-write 2>/dev/null
    ```
-3. **接到 MCP 客户端里**：在你常用的 MCP 客户端（如 IDE/WorkBuddy）配置里加上 `server-agent mcp serve`，然后在对话里让它调 `host_info`。
+3. **接到 MCP 客户端里**：在你常用的 MCP 客户端（如 IDE/WorkBuddy）配置里加上 `server-agent mcp serve`，然后让它调用 `host_info`。
 4. **接入一个外部工具**：随便找一个小型 MCP Server（或者自己写一个十行的），用 `register_mcp_tools` 挂进注册表，观察它是否按 high 风险走审批。
-5. **思考题**：MCP 的 `resources`（资源）与 `prompts`（提示词模板）这两类能力，和我们的「RAG 文档」与「Runbook」是不是一回事？（提示：谁来决定「什么时候用」？）
+5. **思考题**：MCP 的 `resources`（资源）与 `prompts`（提示词模板）这两类能力，和本项目的「RAG 文档」与「Runbook」是不是一回事？（提示：谁来决定「什么时候用」？）
 
 ---
 
-## 【验收清单】
+## 14.7 验收清单
 
 ```bash
 pytest -q tests/test_mcp.py                # 11 passed（含真实子进程往返）
@@ -129,26 +133,18 @@ server-agent mcp call host_info --server "python -m server_agent.mcp.server"
 
 ---
 
-## 【本章小结】
+## 14.8 本章小结
 
-**三句话：**
+**要点**
 1. MCP 把「工具 × 宿主」的适配从 M×N 降到 M+N：一方实现，多方可用；stdio 传输就是换行分隔的 JSON-RPC。
 2. 暴露工具时三条规矩：**默认只暴露只读**、**策略层照旧生效**、**没有审批人就拒绝**。
 3. 接入外部工具一律先当高危：默认 `risk="high"`、加命名空间前缀、校验交给远端。
 
-**自测题：**
-1. MCP 的 Host / Client / Server 三者关系？（积木 14-1）
-2. 为什么通知（notification）不该回响应？（积木 14-2）
-3. 「工具错」和「协议错」怎么区分？（积木 14-2）
-4. 为什么默认只暴露只读工具？（积木 14-3）
-5. MCP 场景下 high 风险操作为什么必然失败？（积木 14-3）
-6. 外部工具为什么默认按 high 处理？（积木 14-4）
+**自测题**（括号内为对应小节）
+1. MCP 的 Host / Client / Server 三者关系？（14.1 节）
+2. 为什么通知（notification）不该回响应？（14.2 节）
+3. 「工具错」和「协议错」怎么区分？（14.2 节）
+4. 为什么默认只暴露只读工具？（14.3 节）
+5. MCP 场景下 high 风险操作为什么必然失败？（14.3 节）
+6. 外部工具为什么默认按 high 处理？（14.4 节）
 7. 「分层测试，贵的只测一次」在本章是怎么体现的？（代码走读）
-
----
-
-## 【下一章预告】
-
-第 15 章「先有尺子：评估与可观测性」：前面 14 章加了很多能力，但**它们到底有没有用**？下一章做两件事——**Trace**（一次 run 的完整耗时树，能回答「时间花在哪」）与**评测集**（用靶场故障 + MockLLM 做可重复的离线评测，量化「根因命中率 / 步数 / 越权尝试」）。有了尺子，第 12 章的「要不要开计划」、第 13 章的「要不要上向量」才有答案。
-
-*学完本章，回到对话里说一句「继续」，我就开讲第 15 章。*

@@ -1,6 +1,6 @@
 # 模块：memory（上下文预算、持久化存储、记忆工具）
 
-- 引入章节：第 08 章
+- 对应章节：第 8 章
 - 源码：`server_agent/memory/`（`context.py`、`store.py`、`recorder.py`）、`server_agent/tools/memory.py`
 - 测试：`tests/test_memory_context.py`、`tests/test_memory_store.py`、`tests/test_cli.py`
 
@@ -86,7 +86,7 @@ flowchart LR
 
 ## 已知限制
 
-- 长期记忆没有失效与冲突解决机制：事实会一直累积，旧值可能过期（讲义思考题）。
+- 长期记忆没有失效与冲突解决机制：事实会一直累积，旧值可能过期（待改进）。
 - `fit_messages` 只压 `tool` 消息；如果 `assistant` 回复极长或用户粘贴超长文本，仍可能超预算（后续可用同策略扩展）。
 - 未做去重：同一事实反复 `remember_fact` 会写多条（`recall_facts` 返回最新在前，天然覆盖）。
 - 单机并发写靠 SQLite 串行；高频并发场景需要 WAL 或换库（第 17 章评估）。

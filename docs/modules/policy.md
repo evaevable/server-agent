@@ -1,6 +1,6 @@
 # 模块：policy（策略、审批、审计、脱敏）+ tools/ops（写操作工具）
 
-- 引入章节：第 09 章
+- 对应章节：第 9 章
 - 源码：`server_agent/policy/`（`risk.py`、`approval.py`、`audit.py`、`redact.py`）、`server_agent/tools/ops.py`
 - 测试：`tests/test_policy.py`（54 个）、`tests/test_cli.py`、`tests/test_api.py`
 - 相关决策：[ADR-0002 不给 Agent 任意 shell](../adr/0002-no-arbitrary-shell.md)
@@ -91,7 +91,7 @@ flowchart TB
 ## 已知限制
 
 - 白名单是静态配置，改白名单需要重启或改环境变量；没有在线评审流程。
-- 审批粒度是「单个动作」，一个 run 里多次高危操作要多次点击（讲义思考题）。
+- 审批粒度是「单个动作」，一个 run 里多次高危操作要多次点击（待改进）。
 - `run_command` 的元字符检查是字符级，不做语法分析；更复杂的绕过（如 base64 拼接）依赖白名单本身足够窄。
 - 审计日志没有轮转与加密；生产环境需要 logrotate 与访问控制。
 - 审批裁决无身份区分（任何持 Token 者都能批准），第 17 章讨论部署时再引入角色。

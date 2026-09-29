@@ -1,6 +1,6 @@
 # 模块：tracing + evals（可观测性与评测）
 
-- 引入章节：第 15 章
+- 对应章节：第 15 章
 - 源码：`server_agent/tracing/`、`evals/`
 - 测试：`tests/test_eval.py`（12 个）
 

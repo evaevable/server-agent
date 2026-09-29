@@ -1,6 +1,6 @@
 # 模块：agent（ReAct 循环与事件）
 
-- 引入章节：第 04 章
+- 对应章节：第 4 章
 - 源码：`server_agent/agent/events.py`、`server_agent/agent/loop.py`
 - 测试：`tests/test_agent_loop.py`
 
@@ -8,10 +8,10 @@
 
 | 负责 | 不负责 |
 |---|---|
-| 组织「模型 ⇄ 工具」的多步循环 | 模型怎么调用（第 02 章）、工具怎么执行（第 03 章） |
-| 停止条件：最终回答、最大步数、超时、重复调用 | 权限与审批（第 09 章在 `_run_tools` 之前插入策略层） |
-| 把过程输出成事件流 | 事件怎么显示（CLI / 第 06 章前端） |
-| 统计步数、工具调用次数、token 用量 | 历史持久化与压缩（第 08 章） |
+| 组织「模型 ⇄ 工具」的多步循环 | 模型怎么调用（第 2 章）、工具怎么执行（第 3 章） |
+| 停止条件：最终回答、最大步数、超时、重复调用 | 权限与审批（第 9 章在 `_run_tools` 之前插入策略层） |
+| 把过程输出成事件流 | 事件怎么显示（CLI / 第 6 章前端） |
+| 统计步数、工具调用次数、token 用量 | 历史持久化与压缩（第 8 章） |
 
 ## 接口
 
@@ -37,7 +37,7 @@ agent.last_result                                              # 同 result，�
 | `text` | `text`（增量） |
 | `tool_call` | `id` `name` `arguments` |
 | `tool_result` | `id` `name` `ok` `content` `chars` `truncated` `elapsed_ms` `skipped`（`repeat` / `bad_json` / `null`） |
-| `report` | `parsed` `report` `error` `raw`（第 07 章的结构化报告） |
+| `report` | `parsed` `report` `error` `raw`（第 7 章的结构化报告） |
 | `error` | `message` `status` `retryable` |
 | `end` | `text` `steps` `tool_calls` `usage` `stopped` `elapsed_ms` `report` `report_error` |
 
@@ -78,8 +78,8 @@ flowchart TB
 
 ## 已知限制
 
-- 历史不做压缩，长会话会迅速逼近上下文窗口（第 08 章）。
+- 上下文超预算时由 `memory.fit_messages` 三级压缩（见 memory 模块），压缩是有损的。
 - 重复检测只识别「参数完全相同」的调用。
-- 同一 Agent 实例不适合并发 `run()`：`self.usage` 与 `last_result` 是实例状态；第 05 章每个 run 新建实例。
+- 同一 Agent 实例不适合并发 `run()`：`self.usage` 与 `last_result` 是实例状态；服务端 `RunManager` 为每个 run 新建实例。
 - 不支持中断（`CancelledError` 会向上传播，但工具线程无法被强制终止）。
 - `run_sync()` 用 `last_result` 取结果，因此同一实例上并发调用会互相覆盖。

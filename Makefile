@@ -5,7 +5,7 @@ PIP := .venv/bin/pip
 SA := .venv/bin/server-agent
 BASETEMP := --basetemp=/tmp/sa-pytest
 
-.PHONY: help install test eval dev serve lint clean lab-up lab-down fault-disk fault-cpu fault-nginx fault-port fix-all mcp-list docker-up docker-down
+.PHONY: help install test eval dev serve lint clean lab-up lab-down fault-disk fault-cpu fault-nginx fault-port fix-all mcp-list docker-up docker-down book book-check
 
 help: ## 显示可用命令
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -60,3 +60,9 @@ docker-up: ## 用 compose 起「Agent + 靶机」
 
 docker-down: ## 停 compose
 	docker compose down -v
+
+book: ## 从 docs/chapters 生成 BOOK.md 与目录
+	$(PY) tools/build_book.py
+
+book-check: ## 校验 BOOK.md 与章节同步、目录链接有效
+	$(PY) tools/build_book.py --check

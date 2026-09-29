@@ -1,6 +1,6 @@
 # 模块：web（前端控制台）
 
-- 引入章节：第 06 章
+- 对应章节：第 6 章
 - 源码：`web/index.html`、`web/app.js`、`web/style.css`
 - 托管：`server_agent/server/app.py` 末尾挂载 `StaticFiles`；目录来自 `SA_WEB_DIR`（默认仓库根的 `web/`）
 - 测试：`tests/test_web.py`
@@ -77,11 +77,11 @@ flowchart LR
 
 | 决策 | 备选 | 理由 |
 |---|---|---|
-| 原生 HTML/JS，无构建 | React / Vue | 本课程聚焦 Agent 机制；界面状态只有 6 个变量，不需要框架 |
+| 原生 HTML/JS，无构建 | React / Vue | 项目聚焦 Agent 机制；界面状态只有 6 个变量，不需要框架 |
 | 时间线 + 折叠卡片 | 聊天气泡 | Agent 的一轮执行有多个步骤与结构化数据，气泡装不下 |
 | 思考内容默认隐藏 | 默认显示 | 思考很长，摊开会挤走有效信息；默认应该「安静」 |
 | 工具结果默认折叠 | 默认展开 | 结果动辄数千字符，结论会被淹没 |
-| Token 存 `localStorage` | Cookie / 会话 | 本地工具够用；公网部署需换成 HTTP-only Cookie 或同源代理（见讲义思考题） |
+| Token 存 `localStorage` | Cookie / 会话 | 本地工具够用；公网部署需换成 HTTP-only Cookie 或同源代理 |
 | 静态目录不存在时跳过挂载 | 强制要求目录存在 | 后端单独使用时不应因为缺前端目录而整体 404 |
 
 ## 已知限制

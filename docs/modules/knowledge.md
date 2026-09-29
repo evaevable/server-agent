@@ -1,6 +1,6 @@
 # 模块：knowledge（切块 / BM25 检索 / 知识工具）
 
-- 引入章节：第 13 章
+- 对应章节：第 13 章
 - 源码：`server_agent/knowledge/`、`server_agent/tools/knowledge_tools.py`、`knowledge/`
 - 测试：`tests/test_knowledge.py`（13 个）
 

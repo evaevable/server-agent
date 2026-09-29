@@ -1,6 +1,6 @@
 # 模块：runs / server（Run 管理器、HTTP API、WebSocket、鉴权）
 
-- 引入章节：第 05 章
+- 对应章节：第 5 章
 - 源码：`server_agent/agent/runs.py`、`server_agent/server/{app,api,ws,auth}.py`
 - 测试：`tests/test_runs.py`、`tests/test_api.py`、`tests/test_ws.py`
 - 接口文档：[docs/api.md](../api.md)
@@ -12,8 +12,8 @@
 | `agent/runs.py` | Run 生命周期、事件缓冲、订阅（含断线续传）、取消、淘汰 | 不关心 HTTP/WS 怎么传（那是对外协议） |
 | `server/app.py` | 应用工厂：挂路由、CORS、把 settings/registry/runs/agent_factory 放到 `app.state` | 不含业务逻辑 |
 | `server/api.py` | HTTP 路由与请求校验 | 不直接调 Agent |
-| `server/ws.py` | 双向通道与消息协议 | 不实现审批（第 09 章在此扩展） |
-| `server/auth.py` | Bearer Token 校验 | 不做权限分级（第 09 章） |
+| `server/ws.py` | 双向通道与消息协议（含审批请求/应答） | 不做审批决策（由 ApprovalManager 负责） |
+| `server/auth.py` | Bearer Token 校验 | 不做权限分级（由策略层负责） |
 
 ## 接口
 
@@ -74,14 +74,14 @@ flowchart TB
 | 事件全部缓存在内存 | 只转发不缓存 | 支持晚连与断线续传；代价是内存，用 `MAX_EVENTS`/`MAX_RUNS` 兜底 |
 | `start()` 是 async | 同步 + `run_coroutine_threadsafe` | 简单直白；同步路由里根本没有事件循环 |
 | 鉴权读 `app.state.settings` | 全局 `get_settings()` | 多实例/测试场景下全局单例会串味 |
-| 工具清单挂 `app.state.registry` | 全局 registry | 允许按实例裁剪工具集（第 09 章起要用） |
+| 工具清单挂 `app.state.registry` | 全局 registry | 允许按实例裁剪工具集（多 Agent 按角色裁剪要用） |
 | WS 用 `?token=` | `Authorization` 头 | 浏览器 WebSocket API 无法自定义请求头 |
-| 未对并发设上限 | 信号量 | 本地单用户够用；生产化是第 15/17 章的事，已在讲义思考题中标出 |
+| 未对并发设上限 | 信号量 | 本地单用户够用；多人共用时需要加上限（见已知限制） |
 
 ## 已知限制
 
-- 内存存储：服务重启后 run 与事件全部丢失（第 08 章换 SQLite）。
+- 内存里只保留最近 `MAX_RUNS` 个 run 用于订阅与补发；历史 run 与事件在 SQLite 里（`/api/history`），但重启后无法再订阅旧 run 的实时事件。
 - 无全局并发上限：同时提交大量任务会一起打向模型服务，可能触发限流。
 - 取消只能中断「正在等待」的步骤，已在执行的同步工具（跑在线程池）无法强杀。
-- 无速率限制与审计（第 09 章）。
-- 前端未接入（第 06 章）。
+- 无速率限制；审计由策略层写 JSONL（`SA_AUDIT_PATH`），不在服务层。
+- 服务退出时 `lifespan` 调用 `RunManager.shutdown()`：在跑的 run 被取消并落库为 cancelled，挂起的审批被撤销。

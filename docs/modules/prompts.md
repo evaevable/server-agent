@@ -1,6 +1,6 @@
 # 模块：prompts（提示词模板与结构化报告）
 
-- 引入章节：第 07 章
+- 对应章节：第 7 章
 - 源码：`server_agent/prompts/`（`__init__.py`、`system_sre.md`、`system_plain.md`、`report.py`）
 - 测试：`tests/test_prompts.py`
 
@@ -8,8 +8,8 @@
 
 | 负责 | 不负责 |
 |---|---|
-| 系统提示词模板、变体管理与渲染（注入主机信息、工具清单、报告 schema） | 消息历史与上下文预算（第 08 章） |
-| 诊断报告的数据结构（`DiagnosticReport`）与 JSON Schema 导出 | 报告怎么展示（CLI / 第 06 章前端） |
+| 系统提示词模板、变体管理与渲染（注入主机信息、工具清单、报告 schema） | 消息历史与上下文预算（第 8 章） |
+| 诊断报告的数据结构（`DiagnosticReport`）与 JSON Schema 导出 | 报告怎么展示（CLI / 第 6 章前端） |
 | 从模型输出里提取并校验报告；解析失败时的修复指令 | 决定要不要修复（由 `SA_REPORT_REPAIR` 控制） |
 
 ## 接口
@@ -32,7 +32,7 @@ repair_prompt(previous_text)  # -> str：把散文改写成 JSON 的指令
 | `findings` | `list[{claim, evidence}]` | 观察与依据；`evidence` 必须引用具体数据 |
 | `root_cause` | str \| null | 根因；证据不足时为 null |
 | `confidence` | `high` / `medium` / `low` | 对根因的置信度 |
-| `actions` | `list[{description, risk, command}]` | 建议动作；`risk` 供第 09 章审批 |
+| `actions` | `list[{description, risk, command}]` | 建议动作；`risk` 供第 9 章审批 |
 | `data_gaps` | `list[str]` | 还缺什么信息 |
 
 ### 变体

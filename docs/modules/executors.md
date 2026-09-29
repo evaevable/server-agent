@@ -1,6 +1,6 @@
 # 模块：executors（执行器）+ tools/remote（远程工具）
 
-- 引入章节：第 10 章
+- 对应章节：第 10 章
 - 源码：`server_agent/executors/`、`server_agent/tools/remote.py`、`inventory.yaml`、`lab/`
 - 测试：`tests/test_executors.py`（14 个，全部离线）
 

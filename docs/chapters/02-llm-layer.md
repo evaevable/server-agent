@@ -1,20 +1,20 @@
-# 第 02 章 和大模型说话：LLM 调用层
+# 第 2 章 和大模型说话：LLM 调用层
 
-> **本章导读**
->
-> - 建议用时：知识 50 分钟 + 动手 40 分钟
-> - 前置知识：第 01 章（Agent 四要素里的「模型 = 大脑」）；知道 HTTP 请求和 JSON
-> - 读完能回答：
->   1. 一次 Chat Completions 请求里到底发了什么？`system / user / assistant / tool` 四种角色各管什么？
->   2. 模型为什么「记得」上一轮对话？（剧透：它不记得）
->   3. 流式输出是怎么一片片传回来的？工具调用的参数被切碎了怎么拼？
->   4. 为什么要自己包一层 Provider 抽象，而不是直接到处调 SDK？
->   5. MockLLM 是什么，为什么它能让后面所有 Agent 测试不花一分钱？
-> - 本章代码：`server_agent/llm/`（数据结构、OpenAI 兼容客户端、MockLLM、工厂）+ `server-agent chat`。对应 tag `ch02`。
+**前置知识**：第 1 章（Agent 四要素里的「模型 = 大脑」）；知道 HTTP 请求和 JSON
+
+**本章代码**：`server_agent/llm/`（数据结构、OpenAI 兼容客户端、MockLLM、工厂）+ `server-agent chat`。
+
+**学习目标**：读完本章，应能回答以下问题。
+
+1. 一次 Chat Completions 请求里到底发了什么？`system / user / assistant / tool` 四种角色各管什么？
+2. 模型为什么「记得」上一轮对话？（剧透：它不记得）
+3. 流式输出是怎么一片片传回来的？工具调用的参数被切碎了怎么拼？
+4. 为什么要自己包一层 Provider 抽象，而不是直接到处调 SDK？
+5. MockLLM 是什么，为什么它能让后面所有 Agent 测试不花一分钱？
 
 ---
 
-## 【积木 2-1】剥开 SDK：一次调用就是一个 HTTP POST
+## 2.1 剥开 SDK：一次调用就是一个 HTTP POST
 
 不管你用哪家模型，只要它说自己「OpenAI 兼容」，一次调用就是这么一个请求：
 
@@ -45,13 +45,13 @@ curl https://api.deepseek.com/chat/completions \
 }
 ```
 
-就这些。厂商 SDK 做的事情，本质上是把这个 JSON 包成对象、加上重试。**本课程用 httpx 直接发这个请求**，这样你随时能看到线上跑的是什么——排查「模型为什么这么回答」时，第一件事永远是看它**实际收到了什么**。
+就这些。厂商 SDK 做的事情，本质上是把这个 JSON 包成对象、加上重试。**本书用 httpx 直接发这个请求**，这样你随时能看到线上跑的是什么——排查「模型为什么这么回答」时，第一件事永远是看它**实际收到了什么**。
 
 这个协议已经成了事实标准：DeepSeek、通义千问（百炼兼容模式）、混元、本地部署的 vLLM / Ollama 都提供同样的接口。所以换模型只需要改三个配置：`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`。
 
 ---
 
-## 【积木 2-2】四种消息角色：一段对话的剧本
+## 2.2 四种消息角色：一段对话的剧本
 
 `messages` 是一个按时间顺序排列的列表，每条消息有一个 `role`：
 
@@ -75,7 +75,7 @@ sequenceDiagram
     M-->>P: assistant: 「根分区 97%，建议查 /var」
 ```
 
-### 一个高频误解：「模型记得我们上一轮聊了什么」
+### 一个高频误解：「模型记得上一轮聊了什么」
 
 不记得。**Chat Completions 是无状态的**：每次请求，模型只看得到这次 `messages` 里的内容。所谓「多轮对话」，是程序每次都把**全部历史**重新发一遍。
 
@@ -91,7 +91,7 @@ sequenceDiagram
 
 ---
 
-## 【积木 2-3】Token、上下文窗口与几个关键参数
+## 2.3 Token、上下文窗口与几个关键参数
 
 **Token** 是模型处理文本的最小单位，大致上一个英文单词约 1-1.5 个 token，一个汉字约 1-2 个 token（不同模型的分词器不同）。计费、限额、上下文长度都按 token 算。
 
@@ -101,17 +101,17 @@ sequenceDiagram
 |---|---|---|---|
 | `temperature` | 随机性。0 最确定，越高越发散 | `0.2` | 排障要稳定、可复现，不需要创意 |
 | `max_tokens` | 本次最多输出多少 token | 不设（由服务端默认） | 需要时在调用处传 `max_tokens=` |
-| `tools` / `tool_choice` | 可用工具列表 / 是否强制调用 | 第 03 章启用 | — |
-| `stream` | 是否流式返回 | CLI 用流式 | 用户体验，见积木 2-4 |
+| `tools` / `tool_choice` | 可用工具列表 / 是否强制调用 | 第 3 章启用 | — |
+| `stream` | 是否流式返回 | CLI 用流式 | 用户体验，见2.4 节 |
 
-每次响应里的 `usage` 告诉你花了多少：`prompt_tokens`（输入）、`completion_tokens`（输出）。`server-agent chat -v` 会把它打印出来——多聊几轮，你会看到 `prompt_tokens` 一轮比一轮大，这就是积木 2-2 里「每次都重发全部历史」的直观证据。
+每次响应里的 `usage` 告诉你花了多少：`prompt_tokens`（输入）、`completion_tokens`（输出）。`server-agent chat -v` 会把它打印出来——多聊几轮，你会看到 `prompt_tokens` 一轮比一轮大，这就是2.2 节 里「每次都重发全部历史」的直观证据。
 
 **`finish_reason`** 说明模型为什么停下，Agent 循环要根据它决定下一步：
 
 | 值 | 含义 | Agent 该做什么 |
 |---|---|---|
 | `stop` | 正常说完 | 当作最终回答 |
-| `tool_calls` | 想调用工具 | 执行工具，把结果回喂（第 04 章） |
+| `tool_calls` | 想调用工具 | 执行工具，把结果回喂（第 4 章） |
 | `length` | 撞到 `max_tokens` 或上下文上限 | 输出被截断，需要处理 |
 | `content_filter` | 被内容审核拦截 | 报错 |
 
@@ -123,7 +123,7 @@ sequenceDiagram
 
 ---
 
-## 【积木 2-4】流式输出：SSE 分片与增量拼接
+## 2.4 流式输出：SSE 分片与增量拼接
 
 非流式调用要等模型把几百个字全部生成完才返回，用户盯着空白屏幕等十几秒。流式调用（`"stream": true`）则边生成边推送，协议是 **SSE**（Server-Sent Events，服务器推送事件）：
 
@@ -163,9 +163,9 @@ delta.tool_calls = [{"index": 0, "function": {"arguments": "th\": \"/var\"}"}}]
 
 ---
 
-## 【积木 2-5】Provider 抽象：为什么要自己包一层
+## 2.5 Provider 抽象：为什么要自己包一层
 
-如果在业务代码里到处直接发 HTTP 请求，换模型、加重试、写测试都会很痛苦。所以我们定义一个很薄的**协议**（Protocol），上层只依赖它：
+如果在业务代码里到处直接发 HTTP 请求，换模型、加重试、写测试都会很痛苦。所以先定义一个很薄的**协议**（Protocol），上层只依赖它：
 
 ```python
 class LLMClient(Protocol):
@@ -175,7 +175,7 @@ class LLMClient(Protocol):
 
 ```mermaid
 flowchart TB
-    AG["Agent 循环（第 04 章）"] --> P["LLMClient 协议"]
+    AG["Agent 循环（第 4 章）"] --> P["LLMClient 协议"]
     CLI["server-agent chat"] --> P
     P --> OC["OpenAICompatClient<br/>DeepSeek / 百炼 / 混元 / vLLM"]
     P --> MK["MockLLM<br/>按剧本回放，测试用"]
@@ -201,7 +201,7 @@ flowchart TB
 
 ---
 
-## 【积木 2-6】MockLLM：让 Agent 测试确定、免费、可重复
+## 2.6 MockLLM：让 Agent 测试确定、免费、可重复
 
 Agent 测试最头疼的三件事：真模型**每次回答不一样**、**要花钱**、**要联网**。MockLLM 用「剧本」解决全部三个问题：
 
@@ -222,13 +222,13 @@ llm = MockLLM([
 | 剧本用完就报错 | 发现 Agent 调用模型的次数比预期多（比如死循环） |
 | 剧本为空时 echo | 没有 API Key 也能体验 `server-agent chat --mock` |
 
-这里有一个重要的思想：**我们测试的不是模型聪不聪明，而是 Agent 程序在模型做出某种选择时的行为是否正确**。模型聪不聪明，要靠第 15 章的评测集来衡量，那是另一回事。
+这里有一个重要的思想：**测试验证的不是模型聪不聪明，而是 Agent 程序在模型做出某种选择时的行为是否正确**。模型聪不聪明，要靠第 15 章的评测集来衡量，那是另一回事。
 
-对真实客户端，我们也不联网测试：`httpx.MockTransport` 可以拦截请求、返回伪造的响应，于是请求体格式、响应解析、SSE 拼接、429 重试、401 不重试，全都能在 0.1 秒内离线验证。
+真实客户端同样不联网测试：`httpx.MockTransport` 可以拦截请求、返回伪造的响应，于是请求体格式、响应解析、SSE 拼接、429 重试、401 不重试，全都能在 0.1 秒内离线验证。
 
 ---
 
-## 【代码走读】本章落地了什么
+## 2.7 代码走读
 
 ```text
 server_agent/llm/
@@ -243,7 +243,7 @@ server_agent/llm/
 
 `Message` 是整个项目流通的「货币」，`to_dict()` 负责转成接口格式。两个细节：
 
-- `ToolCall.arguments` 保留**原始字符串**，`parsed_arguments()` 才解析。模型可能给出非法 JSON，解析失败要作为错误信息回喂给模型（第 04 章「错误即观察」），而不是在解析层就崩掉。
+- `ToolCall.arguments` 保留**原始字符串**，`parsed_arguments()` 才解析。模型可能给出非法 JSON，解析失败要作为错误信息回喂给模型（第 4 章「错误即观察」），而不是在解析层就崩掉。
 - `ChatResponse.reasoning` 与 `message` 分开存放，保证推理过程不会误入历史。
 
 ### 2. 真实客户端：`openai_compat.py`
@@ -266,24 +266,24 @@ history = [system]
 
 ---
 
-## 【动手练习】
+## 2.8 动手练习
 
 1. **接上你的模型**：`cp .env.example .env`，填好 `LLM_API_KEY`（以及你用的厂商对应的 `LLM_BASE_URL` / `LLM_MODEL`），运行 `server-agent chat -v`，问两个相关联的问题（如「nginx 日志默认在哪」→「那怎么按小时切割它」）。观察第二轮的 `prompt_tokens` 比第一轮大多少。
 2. **验证「模型没有记忆」**：把 `cli.py` 里的 `history.append(resp.message)` 注释掉，再问同样两个问题，看第二个回答还能不能接上。做完记得改回来。
-3. **看透 SSE**：用 `curl -N`（`-N` 关闭缓冲）直接请求你的模型接口并加上 `"stream": true`，对照积木 2-4 看原始分片。
+3. **看透 SSE**：用 `curl -N`（`-N` 关闭缓冲）直接请求你的模型接口并加上 `"stream": true`，对照2.4 节 看原始分片。
 4. **温度实验**：同一问题分别用 `LLM_TEMPERATURE=0` 和 `LLM_TEMPERATURE=1.2` 各问 3 次，比较回答的一致性，想想为什么排障 Agent 选低温度。
 5. **读测试**：打开 `tests/test_openai_compat.py`，找到 429 重试和 401 不重试两个用例，试着把 `RETRYABLE_STATUS` 里的 429 删掉，看哪个测试失败。
 
 ---
 
-## 【验收清单】
+## 2.9 验收清单
 
 ```bash
 cd server-agent && source .venv/bin/activate
 pip install -e ".[dev]"
 
 pytest -q
-# 预期：32 passed
+# 预期：全部通过（0 failed）
 
 server-agent chat --mock --once "你好"
 # 预期：（mock）你说的是：你好
@@ -301,9 +301,9 @@ server-agent chat -v --once "磁盘满了先看什么"
 
 ---
 
-## 【本章小结】
+## 2.10 本章小结
 
-**三句话：**
+**要点**
 1. 调用大模型就是一个 HTTP POST：发一个 `messages` 列表，收一条 `assistant` 消息；`tool` 角色和 `tool_calls` 是后面 Agent 的基础。
 2. 模型没有记忆，多轮对话 = 程序每次重发全部历史，所以上下文是要精打细算的预算。
 3. 用一个薄薄的 `LLMClient` 协议隔离厂商差异；真实客户端负责超时、重试、流式拼装，MockLLM 让 Agent 测试确定、免费、离线。
@@ -317,21 +317,13 @@ flowchart LR
     R -->|"append"| H
 ```
 
-**自测题：**
+**自测题**（括号内为对应小节）
 
-1. `system`、`user`、`assistant`、`tool` 四种角色分别由谁写？（积木 2-2）
-2. 为什么说 Chat Completions 是无状态的？这对成本有什么影响？（积木 2-2）
-3. `finish_reason` 为 `tool_calls` 和 `length` 时，Agent 分别应该怎么处理？（积木 2-3）
-4. 流式工具调用的碎片为什么要按 `index` 而不是 `id` 归组？（积木 2-4）
-5. 为什么遇到 401 不重试，遇到 429 要退避重试？退避为什么要加随机抖动？（积木 2-5）
-6. 流式调用为什么只在收到第一个字节之前重试？（积木 2-5）
-7. MockLLM 的 `calls` 记录有什么用？为什么说「测的不是模型聪不聪明」？（积木 2-6）
-8. 思考模型的推理内容为什么不放回历史？（积木 2-3）
-
----
-
-## 【下一章预告】
-
-第 03 章「给 Agent 装上手：工具调用 Function Calling」：本章的模型只会动嘴。下一章我们写一个 `@tool` 装饰器，从 Python 函数的类型注解**自动生成 JSON Schema**，再实现 6 个只读排障工具（`host_info`、`cpu_memory_usage`、`disk_usage`、`top_processes`、`listening_ports`、`tail_file`）。你会明白一个反直觉的事实：**模型看不到你的代码，只看得到工具的描述**——所以一段好的工具描述，比工具本身的实现更决定 Agent 的表现。
-
-*学完本章，回到对话里说一句「继续」，我就开讲第 03 章。*
+1. `system`、`user`、`assistant`、`tool` 四种角色分别由谁写？（2.2 节）
+2. 为什么说 Chat Completions 是无状态的？这对成本有什么影响？（2.2 节）
+3. `finish_reason` 为 `tool_calls` 和 `length` 时，Agent 分别应该怎么处理？（2.3 节）
+4. 流式工具调用的碎片为什么要按 `index` 而不是 `id` 归组？（2.4 节）
+5. 为什么遇到 401 不重试，遇到 429 要退避重试？退避为什么要加随机抖动？（2.5 节）
+6. 流式调用为什么只在收到第一个字节之前重试？（2.5 节）
+7. MockLLM 的 `calls` 记录有什么用？为什么说「测的不是模型聪不聪明」？（2.6 节）
+8. 思考模型的推理内容为什么不放回历史？（2.3 节）
