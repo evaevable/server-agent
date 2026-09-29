@@ -10,10 +10,12 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Callable
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from server_agent import __version__
 from server_agent.agent.loop import Agent
@@ -61,4 +63,9 @@ def create_app(settings: Settings | None = None,
 
     app.include_router(api.router)
     app.include_router(ws.router)
+
+    # 前端静态文件（第 06 章）。放在最后注册：/api、/ws 先匹配，不会被静态资源吞掉。
+    web_dir = settings.web_dir
+    if web_dir and Path(web_dir).is_dir():
+        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
     return app

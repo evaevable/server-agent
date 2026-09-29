@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from pydantic import AliasChoices, Field, field_validator
@@ -42,6 +43,9 @@ class Settings(BaseSettings):
                                            validation_alias=AliasChoices("LLM_EXTRA_BODY", "SA_LLM_EXTRA_BODY"),
                                            description='JSON，合并进请求体的厂商私有参数，如 {"thinking":{"type":"disabled"}}')
 
+    # ---- 第 06 章：前端 ----
+    web_dir: str | None = Field(None, description="前端静态目录；默认取仓库根目录下的 web/")
+
     # ---- 第 05 章：服务 ----
     cors_origins: list[str] = Field(default_factory=list,
                                     description="允许跨域的前端来源，如 ['http://localhost:5173']；空表示不启用 CORS")
@@ -58,6 +62,13 @@ class Settings(BaseSettings):
         if v not in {"debug", "info", "warning", "error"}:
             raise ValueError(f"不支持的日志级别: {v}")
         return v
+
+    @field_validator("web_dir", mode="before")
+    @classmethod
+    def _default_web_dir(cls, v):
+        if v:
+            return v
+        return str(Path(__file__).resolve().parents[1] / "web")
 
     @field_validator("api_token", "llm_api_key", "llm_base_url", "llm_model")
     @classmethod

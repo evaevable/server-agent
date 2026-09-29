@@ -201,7 +201,7 @@ server_agent/
     ├── ws.py            # /ws 双向通道：ask / cancel / ping，事件转发
     └── auth.py          # Bearer Token 校验（从 app.state.settings 读配置）
 tests/test_runs.py       # 8 个：生命周期、缓冲、补发去重、取消、异常、淘汰
-tests/test_api.py        # 13 个：202/SSE/续传/校验/鉴权/404
+tests/test_api.py        # 10 个：202/SSE/续传/校验/鉴权/404
 tests/test_ws.py         # 3 个：ask 事件流、坏消息、鉴权
 docs/api.md              # 接口文档：curl 与 Python 示例、错误码
 ```

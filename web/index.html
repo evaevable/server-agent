@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>server-agent 控制台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="dot" id="health-dot" title="服务状态"></span>
+    <strong>server-agent</strong>
+    <span class="muted" id="health-text">连接中…</span>
+  </div>
+  <div class="actions">
+    <input id="token" type="password" placeholder="API Token（未启用鉴权可留空）" autocomplete="off">
+    <button id="btn-tools" class="ghost">工具</button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <span>历史任务</span>
+      <button id="btn-refresh" class="ghost small">刷新</button>
+    </div>
+    <ul id="run-list" class="run-list"></ul>
+  </aside>
+
+  <section class="content">
+    <div id="timeline" class="timeline">
+      <div class="empty" id="empty-hint">
+        <h2>问点什么，比如：</h2>
+        <ul>
+          <li>这台机器现在资源占用怎么样？</li>
+          <li>磁盘快满了吗？哪个分区最紧张？</li>
+          <li>80 端口被谁占着？</li>
+        </ul>
+      </div>
+    </div>
+
+    <form id="ask-form" class="composer">
+      <textarea id="input" rows="2" placeholder="描述你要排查的问题（Enter 发送，Shift+Enter 换行）"></textarea>
+      <div class="composer-actions">
+        <button type="submit" id="btn-send">发送</button>
+        <button type="button" id="btn-stop" class="danger" disabled>停止</button>
+      </div>
+    </form>
+  </section>
+</main>
+
+<aside id="drawer" class="drawer hidden">
+  <div class="drawer-head">
+    <strong>可用工具</strong>
+    <button id="btn-drawer-close" class="ghost small">关闭</button>
+  </div>
+  <ul id="tool-list"></ul>
+</aside>
+
+<script src="/app.js"></script>
+</body>
+</html>

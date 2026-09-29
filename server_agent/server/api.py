@@ -11,14 +11,16 @@ Agent 一次排查可能几十秒到几分钟。长连接挂着不仅容易超�
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from server_agent.agent.runs import RunManager, make_sse
-from server_agent.server.auth import require_token
+from server_agent.server.auth import require_token, token_ok
 
-router = APIRouter(prefix="/api", dependencies=[Depends(require_token)])
+# 大部分接口用标准的 Authorization 头鉴权；唯独 SSE 事件流还要支持 ?token=
+# （浏览器 EventSource 无法设置请求头），所以依赖逐个挂在路由上，而不是挂在 router 上。
+router = APIRouter(prefix="/api")
 
 
 class RunCreate(BaseModel):
@@ -35,20 +37,21 @@ def manager_of(request: Request) -> RunManager:
     return request.app.state.runs
 
 
-@router.post("/runs", response_model=RunCreated, status_code=status.HTTP_202_ACCEPTED)
+@router.post("/runs", response_model=RunCreated, status_code=status.HTTP_202_ACCEPTED,
+             dependencies=[Depends(require_token)])
 async def create_run(body: RunCreate, request: Request) -> RunCreated:
     """提交一次排查任务。立即返回，不等待 Agent 跑完。"""
     run = await manager_of(request).start(body.input)
     return RunCreated(id=run.id, status=run.status, events_url=f"/api/runs/{run.id}/events")
 
 
-@router.get("/runs")
+@router.get("/runs", dependencies=[Depends(require_token)])
 def list_runs(request: Request) -> dict:
     runs = manager_of(request).list()
     return {"count": len(runs), "runs": [r.summary() for r in runs]}
 
 
-@router.get("/runs/{run_id}")
+@router.get("/runs/{run_id}", dependencies=[Depends(require_token)])
 def get_run(run_id: str, request: Request) -> dict:
     run = manager_of(request).get(run_id)
     if run is None:
@@ -56,8 +59,8 @@ def get_run(run_id: str, request: Request) -> dict:
     return run.summary()
 
 
-@router.delete("/runs/{run_id}")
-@router.post("/runs/{run_id}/cancel")
+@router.delete("/runs/{run_id}", dependencies=[Depends(require_token)])
+@router.post("/runs/{run_id}/cancel", dependencies=[Depends(require_token)])
 async def cancel_run(run_id: str, request: Request) -> dict:
     mgr = manager_of(request)
     run = mgr.get(run_id)
@@ -68,8 +71,22 @@ async def cancel_run(run_id: str, request: Request) -> dict:
 
 
 @router.get("/runs/{run_id}/events")
-async def run_events(run_id: str, request: Request, last_event_id: str | None = None):
-    """SSE 事件流。支持 Last-Event-ID 断线续传（浏览器 EventSource 会自动带上）。"""
+async def run_events(run_id: str, request: Request,
+                     last_event_id: str | None = None,
+                     authorization: str | None = Header(default=None),
+                     token: str | None = Query(default=None, description="浏览器 EventSource 无法设请求头，用查询参数传 Token")):
+    """SSE 事件流。支持 Last-Event-ID 断线续传（浏览器 EventSource 会自动带上）。
+
+    鉴权接受两种方式：Authorization 头（脚本/服务端调用）或 ?token=（浏览器）。
+    Token 出现在 URL 里可能被日志记录，本项目为本地工具，接受这一权衡。
+    """
+    settings = request.app.state.settings
+    provided = token
+    if authorization and authorization.lower().startswith("bearer "):
+        provided = provided or authorization[7:].strip()
+    if not token_ok(settings, provided):
+        raise HTTPException(status_code=401, detail="缺少或错误的 API Token",
+                            headers={"WWW-Authenticate": "Bearer"})
     mgr = manager_of(request)
     run = mgr.get(run_id)
     if run is None:
@@ -91,7 +108,7 @@ async def run_events(run_id: str, request: Request, last_event_id: str | None = 
     })
 
 
-@router.get("/tools")
+@router.get("/tools", dependencies=[Depends(require_token)])
 def list_tools(request: Request) -> dict:
     """暴露**当前 app 实例**实际可用的工具清单（便于前端展示「它能做什么」）。"""
     registry = request.app.state.registry
