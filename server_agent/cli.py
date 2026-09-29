@@ -3,7 +3,7 @@
 第 01 章：version / config / serve
 第 02 章：chat（纯对话，还没有工具）
 第 03 章：tools list / tools call（手动调用工具）
-第 04 章起：ask ...
+第 04 章：ask（Agent 自主多步排查）
 """
 
 from __future__ import annotations
@@ -143,6 +143,92 @@ def _cmd_tools_call(args: argparse.Namespace) -> int:
     return 0 if r.ok else 1
 
 
+def _cmd_ask(args: argparse.Namespace) -> int:
+    import asyncio
+
+    return asyncio.run(_ask(args))
+
+
+async def _ask(args: argparse.Namespace) -> int:
+    from server_agent.agent import Agent
+    from server_agent.agent.loop import DEFAULT_SYSTEM
+    from server_agent.llm import LLMError, create_llm
+
+    try:
+        llm = create_llm(mock=args.mock)
+    except LLMError as e:
+        print(f"[error] {e}", file=sys.stderr)
+        return 2
+
+    agent = Agent(llm, system_prompt=args.system or DEFAULT_SYSTEM, max_steps=args.max_steps,
+                  timeout=args.timeout, stream=not args.no_stream)
+    events: list[dict] = []
+    rc = 0
+    try:
+        async for ev in agent.run(args.question):
+            if args.json:
+                events.append(ev.to_dict())
+                continue
+            _render(ev, verbose=args.verbose, quiet=args.quiet)
+            if ev.type == "end" and ev.data.get("stopped") in ("error", "timeout"):
+                rc = 1
+    except LLMError as e:
+        print(f"[error] {e}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("\n[已中断]", file=sys.stderr)
+        return 130
+    finally:
+        if hasattr(llm, "aclose"):
+            await llm.aclose()
+
+    if args.json:
+        print(json.dumps(events, ensure_ascii=False, indent=2))
+    return rc
+
+
+def _snippet(text: str, limit: int = 160) -> str:
+    one_line = " ".join(text.split())
+    return one_line if len(one_line) <= limit else one_line[:limit] + "…"
+
+
+def _render(ev, *, verbose: bool, quiet: bool) -> None:
+    """把事件渲染到终端。stderr 放过程（思考、工具），stdout 放最终答案——便于 | jq 之类管道使用。"""
+    d = ev.data
+    if ev.type == "step":
+        if not quiet:
+            print(f"\n── 第 {d['step']} 步 ──", file=sys.stderr)
+    elif ev.type == "reasoning":
+        if verbose:
+            print(f"  [思考] {_snippet(d['text'], 200)}", file=sys.stderr)
+    elif ev.type == "text":
+        if not quiet:
+            print(d["text"], end="", flush=True, file=sys.stderr)
+    elif ev.type == "tool_call":
+        if not quiet:
+            print(f"\n  [调用] {d['name']} {_snippet(d['arguments'], 120)}", file=sys.stderr)
+    elif ev.type == "tool_result":
+        if not quiet:
+            mark = "ok" if d["ok"] else "失败"
+            extra = f"（{d['skipped']}）" if d.get("skipped") else ""
+            ms = f" {d['elapsed_ms']}ms" if d.get("elapsed_ms") is not None else ""
+            cut = "，已截断" if d.get("truncated") else ""
+            print(f"  [{mark}] {d['name']}{extra}{ms}，{d['chars']} 字符{cut}", file=sys.stderr)
+            if verbose:
+                print("    " + _snippet(d["content"], 400), file=sys.stderr)
+    elif ev.type == "error":
+        print(f"\n  [错误] {d['message']}", file=sys.stderr)
+    elif ev.type == "end":
+        if not d.get("text"):
+            print(f"\n[未得出结论（{d['stopped']}）]", file=sys.stderr)
+        else:
+            print("\n" + d["text"])
+        u = d.get("usage") or {}
+        print(f"[{d['stopped']}] {d['steps']} 步，{d['tool_calls']} 次工具调用，"
+              f"{d['elapsed_ms']}ms，token 输入 {u.get('prompt_tokens', 0)} / 输出 {u.get('completion_tokens', 0)}",
+              file=sys.stderr)
+
+
 DEFAULT_SYSTEM = "你是一名资深 Linux 运维工程师，回答简洁、给出可执行的命令。"
 
 
@@ -174,6 +260,18 @@ def build_parser() -> argparse.ArgumentParser:
     tc.add_argument("name", help="工具名")
     tc.add_argument("args", nargs="?", default="{}", help='JSON 参数，如 \'{"path": "/"}\'')
     tc.set_defaults(func=_cmd_tools_call)
+
+    ap = sub.add_parser("ask", help="让 Agent 自主排查一个问题（第 04 章）")
+    ap.add_argument("question", help="用自然语言描述问题")
+    ap.add_argument("--mock", action="store_true", help="使用 MockLLM，不调用真实模型")
+    ap.add_argument("--no-stream", action="store_true", help="不用流式，等模型一次性返回")
+    ap.add_argument("--max-steps", type=int, default=None, help="覆盖 SA_AGENT_MAX_STEPS")
+    ap.add_argument("--timeout", type=float, default=None, help="整次运行超时（秒）")
+    ap.add_argument("--system", default=None, help="覆盖系统提示词")
+    ap.add_argument("--json", action="store_true", help="输出完整事件流 JSON（供脚本/前端使用）")
+    ap.add_argument("-q", "--quiet", action="store_true", help="只输出最终答案")
+    ap.add_argument("-v", "--verbose", action="store_true", help="显示思考内容与工具结果片段")
+    ap.set_defaults(func=_cmd_ask)
     return p
 
 

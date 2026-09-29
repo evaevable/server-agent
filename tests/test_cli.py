@@ -31,3 +31,28 @@ def test_tools_call_ok_and_error(capsys):
     assert "partitions" in capsys.readouterr().out
     assert main(["tools", "call", "disk_usage", '{"oops": 1}']) == 1
     assert "Extra inputs" in capsys.readouterr().out
+
+
+def test_ask_mock_json_events(capsys):
+    assert main(["ask", "--mock", "--json", "磁盘为什么满"]) == 0
+    events = json.loads(capsys.readouterr().out)
+    types = [e["type"] for e in events]
+    assert types[0] == "start" and types[1] == "step" and types[-1] == "end"
+    assert set(types[2:-1]) == {"text"}
+    assert events[-1]["seq"] == len(events)  # seq 连续
+    assert events[0]["run_id"].startswith("run_") and events[0]["seq"] == 1
+    assert events[-1]["data"]["stopped"] == "final" and "磁盘为什么满" in events[-1]["data"]["text"]
+
+
+def test_ask_mock_human_readable(capsys):
+    assert main(["ask", "--mock", "机器卡吗"]) == 0
+    captured = capsys.readouterr()
+    assert "（mock）你说的是：机器卡吗" in captured.out
+    assert "1 步" in captured.err and "[final]" in captured.err
+    assert main(["ask", "--mock", "-q", "机器卡吗"]) == 0
+    assert "── 第" not in capsys.readouterr().err
+
+
+def test_ask_without_config_exits_2(capsys):
+    assert main(["ask", "hi"]) == 2
+    assert "缺少模型配置" in capsys.readouterr().err

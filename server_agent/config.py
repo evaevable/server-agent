@@ -42,6 +42,11 @@ class Settings(BaseSettings):
                                            validation_alias=AliasChoices("LLM_EXTRA_BODY", "SA_LLM_EXTRA_BODY"),
                                            description='JSON，合并进请求体的厂商私有参数，如 {"thinking":{"type":"disabled"}}')
 
+    # ---- 第 04 章：Agent 循环 ----
+    agent_max_steps: int = Field(12, ge=1, le=50, description="单次提问最多几步（一步=一次模型调用）")
+    agent_timeout: float = Field(300.0, gt=0, description="单次提问的总超时（秒）")
+    agent_max_tokens: int = Field(1024, ge=64, le=32768, description="模型单次回复的最大 token 数")
+
     @field_validator("log_level")
     @classmethod
     def _check_level(cls, v: str) -> str:
