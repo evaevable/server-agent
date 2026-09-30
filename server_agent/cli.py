@@ -258,7 +258,7 @@ async def _ask(args: argparse.Namespace) -> int:
             return 0
         for role in outcome.roles:
             print(f"\n=== {role.role}（{role.steps} 步 / {role.tool_calls} 次工具 / {role.tokens} token）===")
-            print(role.text[:1500] or "（无输出）")
+            print(_role_text(role.text))
         if outcome.verdict:
             print(f"\n[审查] {outcome.verdict['verdict']}")
             for issue in outcome.verdict.get("issues", []):
@@ -298,6 +298,19 @@ async def _ask(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(events, ensure_ascii=False, indent=2))
     return rc
+
+
+def _role_text(text: str) -> str:
+    """多 Agent 各角色的输出：若含结构化报告就渲染成可读文本，不把原始 JSON 丢给用户。"""
+    from server_agent.prompts.report import parse_report
+
+    if "{" in (text or ""):
+        report, _err = parse_report(text)
+        if report is not None:
+            prefix = text[: text.find("{")].strip()
+            body = _report_text(report.model_dump())
+            return f"{prefix}\n\n{body}".strip() if prefix else body
+    return (text or "（无输出）")[:1500]
 
 
 def _snippet(text: str, limit: int = 160) -> str:

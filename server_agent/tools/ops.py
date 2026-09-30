@@ -197,11 +197,13 @@ def clean_directory(
 @tool(max_chars=6000)
 def run_command(
     command: Annotated[str, Field(min_length=1, max_length=500,
-                                  description="只读命令，必须来自白名单且不含 shell 元字符，如 'df -h'")],
+                                  description="单条只读命令，如 'df -h'、'pgrep -a nginx'；不支持管道 | 与 ; > & 等")],
     timeout: Annotated[float, Field(ge=1, le=60, description="执行超时（秒）")] = 15.0,
 ) -> dict:
-    """执行一条**只读**白名单命令（df/du/free/ps/ss/journalctl/systemctl status 等）。
-    这不是任意 shell：命令必须通过策略层校验（白名单 + 禁止元字符拼接），
+    """执行一条**只读**白名单命令（df/du/free/ps/pgrep/ss/netstat/journalctl/systemctl status 等）。
+    这不是 shell：一次只能执行一条命令，**不支持管道和重定向**（| ; > & 都会被拒绝）。
+    需要过滤时改用带过滤参数的工具：找进程用 top_processes 或 `pgrep -a 名字`，
+    过滤日志用 tail_file 的 grep 参数，查端口用 listening_ports(port=...)。
     输出会做敏感信息脱敏。需要系统改动的操作请用专用工具（如 restart_service）。"""
     parts = shlex.split(command)
     outcome = _run(parts, timeout=timeout)

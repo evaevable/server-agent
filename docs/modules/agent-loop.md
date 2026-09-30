@@ -49,7 +49,7 @@ agent.last_result                                              # 同 result，�
 |---|---|---|
 | `SA_AGENT_MAX_STEPS` | 12 | 单次提问最多几步（一步 = 一次模型调用） |
 | `SA_AGENT_TIMEOUT` | 300 | 单次提问总超时（秒） |
-| `SA_AGENT_MAX_TOKENS` | 1024 | 模型单次回复上限 |
+| `SA_AGENT_MAX_TOKENS` | 4096 | 模型单次回复上限。思考模型（vLLM 的 `reasoning`、DeepSeek 的 `reasoning_content`）的推理 token 也计入，1024 时实测会在收尾步被截断 |
 
 ## 数据流
 

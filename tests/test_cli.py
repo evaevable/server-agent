@@ -287,3 +287,14 @@ def test_mcp_list_command(capsys):
     assert main(["mcp", "list", "--server", f"{_sys.executable} -m server_agent.mcp.server"]) == 0
     out = capsys.readouterr().out
     assert "host_info" in out and "restart_service" not in out
+
+
+def test_multi_role_text_renders_report_instead_of_raw_json():
+    """真实模型测试发现：诊断员的结论是一整段 JSON，多 Agent 输出不能原样打印给用户。"""
+    from server_agent.cli import _role_text
+
+    raw = ('结论如下：\n{"summary":"目录仅 44K","severity":"info","confidence":"high",'
+           '"findings":[{"claim":"很小","evidence":"du 44K"}],"root_cause":"无需清理","actions":[],"data_gaps":[]}')
+    out = _role_text(raw)
+    assert "结论如下" in out and "根因：无需清理" in out and '"summary"' not in out
+    assert _role_text("普通文本") == "普通文本"

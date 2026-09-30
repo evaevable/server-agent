@@ -11,7 +11,7 @@ from server_agent.agent.loop import Agent
 from server_agent.agent.runs import RunManager
 from server_agent.config import Settings
 from server_agent.llm.mock import MockLLM, tool_call
-from server_agent.logging_setup import JsonFormatter, setup_logging
+from server_agent.logging_setup import JsonFormatter, TextFormatter, setup_logging
 from server_agent.sandbox import DockerSandbox, SandboxError
 from server_agent.tools.registry import ToolRegistry
 
@@ -115,3 +115,11 @@ async def test_docker_sandbox_cleans_input_dir_on_failure(monkeypatch):
     with pytest.raises(SandboxError):
         await DockerSandbox().run("print(1)", files={"access.log": "GET / 500\n"})
     assert created and not os.path.exists(created[0]), "启动失败时输入数据目录也必须删除"
+
+
+def test_text_log_formatter_appends_extra_fields():
+    record = logging.LogRecord("server_agent.tools", logging.INFO, __file__, 1, "tool ok", (), None)
+    record.tool = "disk_usage"
+    record.duration_ms = 3.2
+    line = TextFormatter().format(record)
+    assert line.endswith("tool ok tool=disk_usage duration_ms=3.2")

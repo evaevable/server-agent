@@ -149,6 +149,24 @@ async def test_stream_reasoning_content_separated():
     assert "reasoning" not in r.message.to_dict()  # 思考过程不回传给模型
 
 
+async def test_vllm_reasoning_field_is_recognized():
+    """vLLM 0.10+ 把思考内容放在 reasoning（不是 reasoning_content），流式与非流式都要认。"""
+    body = sse(
+        {"choices": [{"delta": {"role": "assistant", "content": ""}}]},
+        {"choices": [{"delta": {"reasoning": "查根分区"}}]},
+        {"choices": [{"delta": {"content": "好"}}]},
+        {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+    )
+    events = [e async for e in make_client(lambda r: httpx.Response(200, content=body)).stream([Message.user("x")])]
+    assert events[0].type == "reasoning" and events[0].text == "查根分区"
+    assert events[-1].response.reasoning == "查根分区" and events[-1].response.message.content == "好"
+
+    data = ok_json()
+    data["choices"][0]["message"]["reasoning"] = "想一下"
+    r = await make_client(lambda req: httpx.Response(200, json=data)).chat([Message.user("x")])
+    assert r.reasoning == "想一下"
+
+
 async def test_extra_body_merged_and_call_opts_win():
     seen = {}
 

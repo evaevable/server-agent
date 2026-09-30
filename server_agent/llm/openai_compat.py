@@ -155,8 +155,14 @@ def parse_response(data: dict) -> ChatResponse:
         finish_reason=choice.get("finish_reason"),
         usage=Usage(u.get("prompt_tokens", 0), u.get("completion_tokens", 0), u.get("total_tokens", 0)),
         model=data.get("model"),
-        reasoning=msg.get("reasoning_content") or None,
+        reasoning=_reasoning_of(msg) or None,
     )
+
+
+def _reasoning_of(obj: dict) -> str:
+    """思考内容的字段名因服务而异：DeepSeek / 百炼用 reasoning_content，vLLM 0.10+ 与 OpenRouter 用 reasoning。"""
+    value = obj.get("reasoning_content") or obj.get("reasoning")
+    return value if isinstance(value, str) else ""
 
 
 class _StreamAccumulator:
@@ -195,9 +201,10 @@ class _StreamAccumulator:
         out, think = "", ""
         for choice in data.get("choices") or []:
             delta = choice.get("delta") or {}
-            if delta.get("reasoning_content"):
-                think += delta["reasoning_content"]
-                self.reasoning.append(delta["reasoning_content"])
+            piece = _reasoning_of(delta)
+            if piece:
+                think += piece
+                self.reasoning.append(piece)
             if delta.get("content"):
                 out += delta["content"]
                 self.text.append(delta["content"])

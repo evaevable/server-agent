@@ -32,13 +32,26 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+class TextFormatter(logging.Formatter):
+    """人读格式，但把 extra 字段以 k=v 附在行尾——否则 "tool ok" 这种日志看不出是哪个工具。"""
+
+    def __init__(self):
+        super().__init__("%(asctime)s %(levelname)-7s %(name)s: %(message)s")
+
+    def format(self, record: logging.LogRecord) -> str:
+        base = super().format(record)
+        extras = [f"{k}={v}" for k, v in vars(record).items()
+                  if k not in _RESERVED and not k.startswith("_") and v not in (None, "")]
+        return f"{base} {' '.join(extras)}" if extras else base
+
+
 def setup_logging(level: str = "info", fmt: str = "text") -> None:
     """幂等：重复调用只会替换 server_agent 根 logger 的 handler。"""
     handler = logging.StreamHandler(sys.stderr)
     if fmt == "json":
         handler.setFormatter(JsonFormatter())
     else:
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s"))
+        handler.setFormatter(TextFormatter())
     root = logging.getLogger("server_agent")
     root.handlers[:] = [handler]
     root.setLevel(level.upper())

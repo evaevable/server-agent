@@ -81,7 +81,7 @@ flowchart LR
 | 运行时 | FastAPI + SSE（断线续传）+ WebSocket 审批；优雅退出（取消在跑任务、撤销挂起审批）；文本或 JSON 结构化日志 |
 | 多主机 | asyncssh 执行器 + 主机清单（每台主机独立的授权范围）；远端不装任何依赖 |
 | 进阶 | Plan-and-Execute + Runbook、BM25 知识库（带引用）、MCP Server/Client、诊断/执行/审查三角色多 Agent |
-| 质量 | 330+ 条离线测试（MockLLM，不花 token）；YAML 评测集；Trace 耗时树 |
+| 质量 | 350+ 条离线测试（MockLLM，不花 token）；YAML 评测集；Trace 耗时树 |
 
 ## 快速开始
 
@@ -110,6 +110,8 @@ make book                                                 # 改完章节后重�
 ```
 
 部署与上线检查见 [docs/deploy.md](docs/deploy.md) 与 [docs/security-checklist.md](docs/security-checklist.md)。
+
+真实模型联调记录（自建 vLLM 思考模型，8 个场景，含发现并修复的 6 个问题）见 [docs/reports/2026-09-30-real-model-test.md](docs/reports/2026-09-30-real-model-test.md)。
 
 ## 仓库结构
 

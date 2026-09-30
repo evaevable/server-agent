@@ -97,7 +97,8 @@ class Settings(BaseSettings):
     # ---- Agent 循环 ----
     agent_max_steps: int = Field(12, ge=1, le=50, description="单次提问最多几步（一步=一次模型调用）")
     agent_timeout: float = Field(300.0, gt=0, description="单次提问的总超时（秒）")
-    agent_max_tokens: int = Field(1024, ge=64, le=32768, description="模型单次回复的最大 token 数")
+    agent_max_tokens: int = Field(4096, ge=64, le=32768,
+                                  description="模型单次回复的最大 token 数（思考模型的推理内容也计入，过小会被截断）")
 
     @field_validator("log_format")
     @classmethod

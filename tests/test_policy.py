@@ -391,3 +391,33 @@ def test_path_within_for_remote_paths(path, ok):
     from server_agent.policy.risk import path_within
 
     assert path_within(path, ["/var/log"]) is ok
+
+
+# ---------- 真实模型测试中发现的绕过：tail_file 被拒后改用 run_command 读私钥 ----------
+
+@pytest.mark.parametrize("command", [
+    "head -n 50 /Users/someone/.ssh/id_rsa",
+    "tail -1 /home/app/.ssh/id_ed25519",
+    "tail -n 20 ~/.ssh/id_rsa",
+    "grep PRIVATE /srv/app/deploy.pem",
+    "grep -r BEGIN /home/app",
+    "grep -Rn password /etc",
+    "wc -l /etc/shadow",
+    "head /srv/app/.env",
+    "journalctl --file=/root/.ssh/x",
+])
+def test_run_command_cannot_read_secrets(command):
+    from server_agent.policy.risk import Policy
+
+    decision = Policy().decide("run_command", {"command": command}, risk="read")
+    assert not decision.allowed, command
+
+
+@pytest.mark.parametrize("command", [
+    "tail -n 100 /var/log/nginx/error.log", "grep -i error /var/log/syslog", "head -5 /etc/os-release",
+    "pgrep -a nginx", "ls -la /var/log",
+])
+def test_run_command_still_allows_normal_reads(command):
+    from server_agent.policy.risk import Policy
+
+    assert Policy().decide("run_command", {"command": command}, risk="read").allowed, command

@@ -24,7 +24,7 @@ NEVER_DELETE = ("/", "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot",
                 "/sys", "/var/lib", "/System", "/Library", "/Applications", "/Users", "/home")
 PROTECTED_PIDS = {0, 1}
 # run_command 的白名单：只读、信息型命令。**注意这里没有 rm / mv / dd / chmod / kill**
-ALLOWED_COMMANDS = {"uptime", "df", "du", "free", "ps", "ss", "netstat", "journalctl",
+ALLOWED_COMMANDS = {"uptime", "df", "du", "free", "ps", "pgrep", "ss", "netstat", "journalctl",
                     "systemctl", "tail", "head", "wc", "grep", "ls", "uname", "who", "date"}
 FORBIDDEN_COMMANDS = {"rm", "rmdir", "dd", "mkfs", "shutdown", "reboot", "halt", "chmod",
                       "chown", "sudo", "su", "kill", "killall", "pkill", "mv", "useradd",
@@ -35,6 +35,8 @@ SENSITIVE_DIRS = ("/etc/ssl/private", "/root/.ssh", "/proc", "/sys")
 SENSITIVE_NAMES = (".env", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "authorized_keys",
                    ".pgpass", ".netrc", ".git-credentials", "credentials")
 SENSITIVE_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".kdbx")
+# 白名单中能直接读取文件内容的命令：它们的路径参数也要过敏感路径检查
+FILE_READING_COMMANDS = {"tail", "head", "grep", "wc", "journalctl"}
 SHELL_METACHARS = (";", "|", "&", ">", "<", "`", "$(", "\n", "\\")
 
 
@@ -137,7 +139,10 @@ class Policy:
             return PolicyDecision(False, reason="命令不能为空")
         for meta in SHELL_METACHARS:
             if meta in cmd:
-                return PolicyDecision(False, reason=f"命令包含不允许的 shell 元字符: {meta!r}（防止命令拼接）")
+                return PolicyDecision(False, reason=(
+                    f"命令包含不允许的 shell 元字符 {meta!r}：run_command 不是 shell，一次只执行一条命令。"
+                    "需要过滤请改用：进程 → top_processes 或 pgrep -a 名字；日志 → tail_file(grep=...)；"
+                    "端口 → listening_ports(port=...)"))
         try:
             parts = shlex.split(cmd)
         except ValueError as e:
@@ -149,6 +154,20 @@ class Policy:
             return PolicyDecision(False, reason=f"命令 {head} 在禁用列表里")
         if head not in ALLOWED_COMMANDS:
             return PolicyDecision(False, reason=f"命令 {head} 不在白名单内（允许：{', '.join(sorted(ALLOWED_COMMANDS))}）")
+        if head in FILE_READING_COMMANDS:
+            # 白名单里的 tail/head/grep 本身就能读文件：参数里的路径同样要过敏感路径检查，
+            # 否则 tail_file 挡住的私钥，换成 run_command "head -n 50 ~/.ssh/id_rsa" 就读出来了。
+            if head == "grep" and any(_is_recursive_grep_flag(x) for x in parts[1:]):
+                return PolicyDecision(False, reason="不允许递归 grep（-r/-R）：会扫到凭证与私钥文件。请指定具体日志文件")
+            for arg in parts[1:]:
+                if arg.startswith("-") and "=" not in arg:
+                    continue
+                candidate = arg.split("=", 1)[1] if arg.startswith("-") else arg
+                if "/" not in candidate and not candidate.startswith((".", "~")):
+                    continue
+                reason = sensitive_path_reason(candidate, self._norm(candidate))
+                if reason:
+                    return PolicyDecision(False, reason=reason + "（run_command 同样不能读取凭证/私钥）")
         return PolicyDecision(True, needs_approval=False, reason=f"命令 {head} 属于只读白名单")
 
 
@@ -185,3 +204,9 @@ def path_within(path: str, allowed: tuple[str, ...] | list[str]) -> bool:
         if norm == b or norm.startswith(b.rstrip("/") + "/"):
             return True
     return False
+
+
+def _is_recursive_grep_flag(arg: str) -> bool:
+    if arg in ("--recursive", "--dereference-recursive") or arg.startswith(("--directories=recurse", "--include", "--exclude-dir")):
+        return True
+    return arg.startswith("-") and not arg.startswith("--") and any(c in arg[1:] for c in "rR")
