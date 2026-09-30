@@ -31,6 +31,12 @@ async function api(path, options = {}) {
   if (!res.ok) {
     let detail = res.statusText;
     try { detail = (await res.json()).detail || detail; } catch (e) { /* 非 JSON 响应 */ }
+    if (res.status === 401) {
+      markTokenNeeded();
+      throw new Error(state.token
+        ? "API Token 不正确：请在右上角输入框填入服务端 SA_API_TOKEN 的值"
+        : "服务端已启用鉴权：请先在右上角「API Token」输入框填入 SA_API_TOKEN 的值，再重新提问");
+    }
     throw new Error(res.status + " " + detail);
   }
   return res.json();
@@ -363,12 +369,19 @@ async function loadTools() {
   });
 }
 
+function markTokenNeeded() {
+  const input = $("token");
+  input.classList.add("need");
+  input.focus();
+}
+
 async function checkHealth() {
   try {
     const res = await fetch("/health");
     const h = await res.json();
     $("health-dot").className = "dot ok";
-    $("health-text").textContent = "v" + h.version + (h.auth ? "（已启用鉴权）" : "");
+    $("health-text").textContent = "v" + h.version + (h.auth ? (state.token ? "（已启用鉴权）" : "（已启用鉴权，请填写 API Token）") : "");
+    if (h.auth && !state.token) markTokenNeeded();
   } catch (e) {
     $("health-dot").className = "dot bad";
     $("health-text").textContent = "服务不可用";
@@ -397,11 +410,13 @@ $("btn-tools").onclick = async () => {
 };
 $("btn-drawer-close").onclick = () => $("drawer").classList.add("hidden");
 $("token").value = state.token;
-$("token").addEventListener("change", (e) => {
+// 边输入边保存：不必按回车或点别处，填完直接提问就能带上 Token
+$("token").addEventListener("input", (e) => {
   state.token = e.target.value.trim();
   localStorage.setItem("sa_token", state.token);
-  checkHealth();
+  e.target.classList.toggle("need", !state.token);
 });
+$("token").addEventListener("change", () => checkHealth());
 
 checkHealth();
 loadRuns();
